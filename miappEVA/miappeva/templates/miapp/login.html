@@ -1,0 +1,133 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EVA - Inicio de sesión</title>
+
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background-color: #FFF8E1;
+    }
+    .input-icon {
+      position: absolute;
+      left: 1rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #6B7280;
+      font-size: 1.6rem; 
+    }
+    
+    input::placeholder { opacity: 1; color: #9CA3AF; font-size: 1.125rem; }
+  </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen text-gray-900">
+
+  
+  <header class="fixed top-0 left-0 right-0 h-12 bg-blue-900 flex items-center justify-center shadow-md z-10">
+    <span class="text-xl md:text-2xl font-extrabold text-white tracking-wide">EVA</span>
+  </header>
+
+  
+  <main class="mt-10 md:mt-16 w-[96%] max-w-2xl bg-white/95 rounded-3xl shadow-2xl p-8 md:p-12 text-center border border-gray-200">
+
+    
+    <img src="{% static 'miapp/img/eva.jpg' %}" alt="EVA"
+         class="mx-auto w-32 h-32 md:w-40 md:h-40 mb-6 md:mb-8 rounded-full shadow" />
+
+    
+    <h1 class="text-3xl md:text-4xl font-extrabold mb-6 text-gray-900 tracking-tight">Inicio de sesión</h1>
+
+    {% if messages %}
+      <div id="mensajes-visibles" class="mb-6 space-y-3">
+        {% for message in messages %}
+          {% if message.tags == 'error' %}
+            <div class="px-5 py-4 rounded-2xl text-lg md:text-xl bg-red-100 text-red-800 border border-red-300">
+              {{ message }}
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      <div id="mensajes-ocultos" class="hidden">
+        {% for message in messages %}
+          <span data-tag="{{ message.tags }}">{{ message }}</span>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <p id="mensaje-bienvenida" class="text-lg md:text-xl mb-8 text-gray-700">
+      👋 Bienvenido a EVA.
+    </p>
+
+    <form method="post" action="" class="text-left mx-auto max-w-xl">
+      {% csrf_token %}
+
+      <label for="username" class="sr-only">Nombre</label>
+      <div class="relative mb-6">
+        <span class="input-icon">👤</span>
+        <input type="text" name="username" id="username" placeholder="Escriba su nombre"
+          class="w-full pl-14 pr-4 py-4 md:py-5 border-2 border-gray-300 rounded-2xl text-xl md:text-2xl
+                 focus:ring-4 focus:ring-blue-300 focus:outline-none"
+          required
+          onfocus="hablar('Por favor, escriba su nombre.')">
+      </div>
+
+      <label for="password" class="sr-only">Contraseña</label>
+      <div class="relative mb-8">
+        <span class="input-icon">🔒</span>
+        <input type="password" name="password" id="password" placeholder="Escriba su contraseña"
+          class="w-full pl-14 pr-4 py-4 md:py-5 border-2 border-gray-300 rounded-2xl text-xl md:text-2xl
+                 focus:ring-4 focus:ring-blue-300 focus:outline-none"
+          required
+          onfocus="hablar('Por favor, escriba su contraseña.')">
+      </div>
+
+      <button type="submit"
+        class="w-full bg-[#16A34A] hover:bg-[#22C55E] text-white text-2xl md:text-3xl font-bold
+               py-4 md:py-5 rounded-2xl shadow-lg transition-transform transform hover:scale-[1.02]
+               active:scale-95 focus:outline-none focus:ring-4 focus:ring-green-300 tracking-wide"
+        onclick="hablar('Has presionado continuar.')">
+        Continuar
+      </button>
+    </form>
+  </main>
+
+  <footer class="fixed bottom-0 left-0 right-0 h-4 bg-blue-900"></footer>
+
+  <script>
+    // 🔊 Hablar texto
+    function hablar(texto) {
+      const u = new SpeechSynthesisUtterance(texto);
+      u.lang = 'es-MX';
+      u.rate = 0.95;
+      u.pitch = 1;
+      speechSynthesis.cancel(); // detiene lecturas previas
+      speechSynthesis.speak(u);
+    }
+
+    // 🎙 Al cargar:
+    window.addEventListener('load', () => {
+      // ¿Hay un mensaje de ERROR visible?
+      const msgError = document.querySelector('#mensajes-visibles .bg-red-100');
+
+      if (msgError) {
+        // Si hay error: lo LEEMOS y además ya se VE
+        hablar(msgError.innerText);
+      } else {
+        // Si NO hay error: bienvenida (no leemos otros mensajes como "bienvenido de nuevo" o "sesión cerrada")
+        setTimeout(() => {
+          hablar("Bienvenido a EVA. Por favor, escriba su nombre y contraseña para continuar.");
+        }, 800);
+      }
+    });
+  </script>
+
+</body>
+</html>

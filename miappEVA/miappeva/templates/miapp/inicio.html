@@ -1,0 +1,1177 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EVA - Asistente de voz</title>
+
+  <!-- TailwindCSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mdtimepicker@3.1.1/mdtimepicker.min.js"></script>
+
+  <!-- Fuente Poppins -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mdtimepicker@3.1.1/mdtimepicker.min.css">
+
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background-color: #FFF8E1;
+      overflow-x: hidden;
+    }
+    #btnHablar { position: relative; z-index: 1; }
+
+    .mdtimepicker {
+      z-index: 9999 !important;
+    }
+
+  </style>
+
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#2563EB">
+</head>
+
+<body class="min-h-screen flex flex-col items-center bg-gray-200 justify-center text-gray-900 text-2xl leading-relaxed">
+
+<!-- HEADER -->
+<header class="fixed top-0 left-0 right-0 h-16 bg-blue-900 text-white flex items-center justify-between px-6 shadow-md text-2xl z-50">
+  <div class="flex items-center gap-3">
+    <img src="{% static 'miapp/img/eva.jpg' %}" alt="EVA Logo" class="w-12 h-12 rounded-full">
+    <span class="text-3xl font-extrabold tracking-wide">EVA</span>
+  </div>
+
+  <div class="flex items-center gap-4">
+    <!-- Botón Alarmas -->
+    <button id="btnAlarmas"
+      class="flex items-center justify-center gap-2
+             bg-green-500 hover:bg-green-700
+             text-white font-bold
+             px-3 py-1 rounded-lg shadow
+             text-lg transition
+             hover:scale-105 active:scale-95
+             focus:outline-none focus:ring-2 focus:ring-green-300">
+      <span class="text-2xl">🕒</span>
+      <span>Alarmas</span>
+    </button>
+
+    <!-- Botón Salir -->
+    <form action="{% url 'salir' %}" method="post" class="m-0">
+      {% csrf_token %}
+      <button
+        class="bg-red-500 hover:bg-red-600
+               text-white font-bold
+               px-4 py-2 rounded-lg shadow
+               text-lg transition
+               hover:scale-105 active:scale-95
+               focus:outline-none focus:ring-2 focus:ring-red-300">
+        Salir
+      </button>
+    </form>
+  </div>
+</header>
+
+  <!-- MAIN -->
+  <main class="mt-20 w-[98%] max-w-5xl bg-white p-12 rounded-3xl shadow-xl border text-center space-y-12 overflow-hidden">
+    <div id="estado" class="px-8 py-4 rounded-full bg-gray-100 text-gray-700 font-bold text-3xl shadow-md">
+      EVA esta lista para ayudarte.
+    </div>
+
+     <!-- Contenedor de botones centrados y responsive -->
+<div class="flex flex-col md:flex-row items-center justify-center gap-12 md:gap-16">
+  <!-- Micrófono -->
+  <div class="flex flex-col items-center">
+    <img id="btnHablar"
+         src="{% static 'miapp/img/microfono11.png' %}"
+         alt="Hablar" title="Presione para hablar"
+         class="w-64 h-64 md:w-60 md:h-60 cursor-pointer transition-transform transform hover:scale-110 active:scale-95 drop-shadow-2xl">
+    <p class="mt-4 text-2xl font-bold text-gray-700 md:hidden">Hablar</p>
+  </div>
+
+  <!-- Cámara -->
+  <div class="flex flex-col items-center">
+    <img id="btnCamara"
+         src="{% static 'miapp/img/camara.png' %}"
+         alt="Escanear medicamento"
+         class="w-60 h-60 md:w-56 md:h-56 cursor-pointer transition-transform transform hover:scale-110 active:scale-95 drop-shadow-2xl">
+    <p class="mt-4 text-2xl font-bold text-gray-700 md:hidden">Escanear</p>
+  </div>
+
+  <!-- Alarma -->
+  <div class="flex flex-col items-center">
+    <img id="btnAlarmaManual"
+         src="{% static 'miapp/img/alarmaBoton.png' %}"
+         alt="Alarma Boton" title="Presione para poner la alarma"
+         class="w-60 h-60 md:w-56 md:h-56 cursor-pointer transition-transform transform hover:scale-110 active:scale-95 drop-shadow-2xl">
+    <p class="mt-4 text-2xl font-bold text-gray-700 md:hidden">Alarma</p>
+  </div>
+</div>
+
+<!-- Respuesta IA (se mantiene fuera del contenedor) -->
+<div id="respuestaIA" class="hidden mt-10">
+  <div class="mx-auto max-w-2xl bg-blue-100 border-4 border-blue-400 text-blue-900
+              text-3xl font-semibold leading-relaxed p-8 rounded-3xl shadow-lg
+              tracking-wide text-center">
+    <span id="textoRespuesta"></span>
+  </div>
+</div>
+
+  <footer class="fixed bottom-0 left-0 right-0 h-4 bg-blue-600"></footer>
+
+<!-- PANEL DE ALARMAS (FIJO Y CON SCROLL INTERNO) -->
+<div id="panelAlarmas"
+     class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-3 md:p-8">
+  <div class="bg-white rounded-[3rem] shadow-2xl 
+              w-full max-w-5xl h-[90vh] 
+              p-6 md:p-12 flex flex-col relative">
+
+    <!-- ENCABEZADO -->
+    <div class="flex justify-between items-center border-b-4 border-blue-400 pb-6 mb-6 flex-shrink-0">
+      <h2 class="text-4xl md:text-6xl font-extrabold text-gray-900 flex items-center gap-3">
+        🕒 <span>Tus alarmas</span>
+      </h2>
+      <button id="cerrarPanel"
+              class="text-gray-500 hover:text-black text-6xl font-extrabold transition transform hover:scale-110">&times;</button>
+    </div>
+
+    <!-- LISTA DE ALARMAS -->
+    <ul id="listaAlarmas"
+        class="flex-1 overflow-y-auto space-y-8 md:space-y-10 
+               text-gray-800 text-3xl md:text-4xl font-semibold px-2 
+               scrollbar-thin scrollbar-thumb-blue-400 scrollbar-track-blue-100 rounded-2xl">
+      <!-- Se llena dinámicamente con JS -->
+    </ul>
+  </div>
+</div>
+
+  <!-- MODAL CÁMARA -->
+<div id="modalCamara" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center z-50">
+  <div class="bg-white rounded-3xl shadow-2xl w-[98%] max-w-5xl h-[90vh] p-4 md:p-10 flex flex-col relative overflow-hidden">
+    <h2 class="text-3xl md:text-5xl font-extrabold text-center text-gray-800 mb-4">
+      Toma una foto de tu medicamento
+    </h2>
+
+    <!-- Contenedor de vista -->
+    <div class="flex-1 rounded-3xl border-4 border-blue-500 bg-gray-100 overflow-hidden relative mb-6 flex items-center justify-center">
+      <!-- MODO A: video en vivo -->
+      <video id="videoPreview" class="w-full h-full object-cover hidden" autoplay playsinline muted></video>
+      <!-- MODO A/B: canvas para snapshot o preview -->
+      <canvas id="canvasPreview" class="w-full h-full object-cover hidden"></canvas>
+      <!-- MODO B: input capture -->
+      <input id="inputCapture" type="file" accept="image/*" capture="environment"
+             class="absolute inset-0 opacity-0 cursor-pointer hidden" />
+      <!-- Placeholder cuando algo falla -->
+      <div id="placeholderCam" class="absolute inset-0 flex items-center justify-center text-gray-500 text-lg md:text-2xl">
+        <span>No se ha iniciado la cámara aún…</span>
+      </div>
+    </div>
+
+    <!-- Botones -->
+<div class="flex flex-wrap items-center justify-center gap-4 md:gap-6 px-2 md:px-0 mt-4">
+
+  <!-- Cancelar -->
+  <button id="btnCancelarCam"
+          class="px-6 py-3 rounded-xl bg-red-600 text-white text-xl md:text-5xl font-bold hover:bg-red-700 transition shadow-md">
+    Cancelar
+  </button>
+
+  <!-- TOMAR FOTO -->
+  <div class="flex items-center gap-4">
+    <button id="btnTomarFoto"
+            class="relative w-24 h-24 md:w-28 md:h-28 flex items-center justify-center rounded-full bg-yellow-400 hover:bg-yellow-500 transition transform hover:scale-110 active:scale-95 focus:outline-none shadow-lg">
+      <img src="{% static 'miapp/img/camara2.png' %}"
+           alt="Tomar foto"
+           class="w-14 h-14 md:w-20 md:h-20 object-contain" />
+    </button>
+
+    <!-- 🔁 NUEVO BOTÓN REPETIR FOTO -->
+    <button id="btnRepetirFoto"
+            class="relative w-20 h-20 md:w-24 md:h-24 flex items-center justify-center rounded-full bg-blue-500 hover:bg-blue-600 transition transform hover:scale-110 active:scale-95 focus:outline-none shadow-lg">
+      <img src="{% static 'miapp/img/repetir.png' %}" 
+           alt="Repetir foto"
+           class="w-12 h-12 md:w-12 md:h-12 object-contain invert" />
+    </button>
+  </div>
+
+  <!-- Aceptar -->
+  <button id="btnAceptarFoto"
+          class="px-6 py-3 rounded-xl bg-green-600 text-white text-xl md:text-5xl font-bold hover:bg-green-700 transition shadow-md"
+          disabled>
+    Aceptar
+  </button>
+</div>
+</div> 
+</div>
+
+<!-- MODAL ALARMA RESPONSIVE -->
+<div id="modalAlarmaSimple"
+     class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
+
+  <div class="bg-white rounded-3xl shadow-2xl 
+              w-[96%] sm:w-[90%] md:w-[80%] lg:w-[60%]
+              max-h-[90vh] p-4 sm:p-6 md:p-10 
+              flex flex-col items-center justify-start 
+              overflow-y-auto text-center">
+
+    <!-- Paso 1 -->
+<div id="paso1" class="flex flex-col items-center justify-center w-full max-w-6xl space-y-6 sm:space-y-8 mt-4 sm:mt-8">
+
+    <!-- Título con emoji de alarma arriba -->
+<div class="flex flex-col items-center justify-center text-center mb-4">
+  <span class="text-[3rem] sm:text-[5rem] md:text-[4rem] lg:text-[4rem] drop-shadow-lg">⏰</span>
+  <h2 class="text-2xl sm:text-3xl md:text-5xl lg:text-5xl font-extrabold text-blue-800 mt-2">
+    Selecciona la hora y los minutos
+  </h2>
+</div>
+
+      <!-- HORA Y MINUTOS EN LÍNEA -->
+      <div class="flex flex-wrap sm:flex-nowrap items-center justify-center gap-6 sm:gap-10 mt-2 sm:mt-6">
+        <!-- HORA -->
+        <div class="flex items-center gap-2 sm:gap-4">
+          <button id="menosHora" class="bg-blue-200 hover:bg-blue-300 text-3xl sm:text-5xl font-bold rounded-full w-12 h-12 sm:w-20 sm:h-20 shadow-lg">−</button>
+          <p id="horaDisplay" class="text-[3.5rem] sm:text-[5rem] font-extrabold tracking-wider text-blue-900">08</p>
+          <button id="masHora" class="bg-blue-200 hover:bg-blue-300 text-3xl sm:text-5xl font-bold rounded-full w-12 h-12 sm:w-20 sm:h-20 shadow-lg">+</button>
+        </div>
+
+        <!-- DOS PUNTOS -->
+        <span class="text-[3.5rem] sm:text-[5rem] font-extrabold text-blue-900 select-none">:</span>
+
+        <!-- MINUTOS -->
+        <div class="flex items-center gap-2 sm:gap-4">
+          <button id="menosMin" class="bg-blue-200 hover:bg-blue-300 text-3xl sm:text-5xl font-bold rounded-full w-12 h-12 sm:w-20 sm:h-20 shadow-lg">−</button>
+          <p id="minDisplay" class="text-[3.5rem] sm:text-[5rem] font-extrabold tracking-wider text-blue-900">00</p>
+          <button id="masMin" class="bg-blue-200 hover:bg-blue-300 text-3xl sm:text-5xl font-bold rounded-full w-12 h-12 sm:w-20 sm:h-20 shadow-lg">+</button>
+        </div>
+      </div>
+
+      <!-- AM / PM -->
+      <div class="flex justify-center gap-4 sm:gap-6 mt-3 sm:mt-5 flex-wrap">
+        <button id="amBtn" class="px-6 sm:px-8 py-3 sm:py-4 text-2xl sm:text-3xl rounded-full bg-blue-500 text-white font-bold shadow-md transition">AM</button>
+        <button id="pmBtn" class="px-6 sm:px-8 py-3 sm:py-4 text-2xl sm:text-3xl rounded-full bg-gray-300 text-gray-800 font-bold shadow-md transition">PM</button>
+      </div>
+
+      <!-- ✅ BOTONES -->
+      <div class="flex flex-col sm:flex-row gap-4 sm:gap-6 mt-6 sm:mt-10 justify-center w-full px-4">
+        <button id="cancelarPaso1" class="bg-red-500 hover:bg-red-600 text-white text-2xl sm:text-3xl font-bold px-6 sm:px-10 py-3 sm:py-5 rounded-full shadow-lg w-full sm:w-auto">Cancelar</button>
+        <button id="continuarPaso1" class="bg-green-500 hover:bg-green-600 text-white text-2xl sm:text-3xl font-bold px-6 sm:px-10 py-3 sm:py-5 rounded-full shadow-lg w-full sm:w-auto">Continuar</button>
+      </div>
+    </div>
+
+    <!-- Paso 2 -->
+    <div id="paso2" class="hidden flex-col items-center justify-center w-full max-w-3xl text-center space-y-8 sm:space-y-10 mt-4 sm:mt-8 px-2">
+      <h2 class="text-3xl sm:text-4xl font-extrabold text-blue-800">📅 Selecciona los días</h2>
+      <div id="diasBtns" class="flex flex-wrap justify-center gap-3 sm:gap-6">
+        <button class="dia w-16 sm:w-24 h-16 sm:h-20 bg-gray-300 text-2xl sm:text-3xl font-bold rounded-full">Lun</button>
+        <button class="dia w-16 sm:w-24 h-16 sm:h-20 bg-gray-300 text-2xl sm:text-3xl font-bold rounded-full">Mar</button>
+        <button class="dia w-16 sm:w-24 h-16 sm:h-20 bg-gray-300 text-2xl sm:text-3xl font-bold rounded-full">Mié</button>
+        <button class="dia w-16 sm:w-24 h-16 sm:h-20 bg-gray-300 text-2xl sm:text-3xl font-bold rounded-full">Jue</button>
+        <button class="dia w-16 sm:w-24 h-16 sm:h-20 bg-gray-300 text-2xl sm:text-3xl font-bold rounded-full">Vie</button>
+        <button class="dia w-16 sm:w-24 h-16 sm:h-20 bg-gray-300 text-2xl sm:text-3xl font-bold rounded-full">Sáb</button>
+        <button class="dia w-16 sm:w-24 h-16 sm:h-20 bg-gray-300 text-2xl sm:text-3xl font-bold rounded-full">Dom</button>
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-4 sm:gap-6 mt-6 justify-center w-full px-4">
+        <button id="volverPaso1" class="bg-gray-400 hover:bg-gray-500 text-white text-2xl sm:text-3xl font-bold px-6 sm:px-10 py-3 sm:py-5 rounded-full shadow-lg w-full sm:w-auto">Atrás</button>
+        <button id="continuarPaso2" class="bg-green-500 hover:bg-green-600 text-white text-2xl sm:text-3xl font-bold px-6 sm:px-10 py-3 sm:py-5 rounded-full shadow-lg w-full sm:w-auto">Continuar</button>
+      </div>
+    </div>
+
+    <!-- Paso 3 -->
+    <div id="paso3" class="hidden flex-col items-center justify-center w-full max-w-3xl text-center space-y-8 sm:space-y-10 mt-4 sm:mt-8 px-4">
+      <h2 class="text-3xl sm:text-4xl font-extrabold text-blue-800">💊 Nombre del medicamento</h2>
+      <input id="nombreMed" type="text"
+             class="w-full rounded-3xl border-4 border-blue-400 focus:border-blue-600 text-2xl sm:text-4xl text-center p-4 sm:p-6 outline-none shadow-lg"
+             placeholder="Ej. Paracetamol">
+      <div class="flex flex-col sm:flex-row gap-4 sm:gap-6 mt-6 justify-center w-full px-4">
+        <button id="volverPaso2" class="bg-gray-400 hover:bg-gray-500 text-white text-2xl sm:text-3xl font-bold px-6 sm:px-10 py-3 sm:py-5 rounded-full shadow-lg w-full sm:w-auto">Atrás</button>
+        <button id="guardarAlarmaFinal" class="bg-green-600 hover:bg-green-700 text-white text-2xl sm:text-3xl font-bold px-6 sm:px-10 py-3 sm:py-5 rounded-full shadow-lg w-full sm:w-auto">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer class="fixed bottom-0 left-0 right-0 h-4 bg-blue-900"></footer>
+
+
+  <!-- SCRIPT -->
+  <script>
+    // === VOZ ===
+    function hablar(texto) {
+      const u = new SpeechSynthesisUtterance(texto);
+      u.lang = 'es-MX';
+      u.rate = 0.7;
+      u.pitch = 1;
+      speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+    }
+
+    const estado = document.getElementById('estado');
+    const btn = document.getElementById('btnHablar');
+    const contenedorRespuesta = document.getElementById('respuestaIA');
+    const textoRespuesta = document.getElementById('textoRespuesta');
+
+    function setEstado(texto, color = 'gray') {
+      const colores = {
+        gray: 'bg-gray-100 text-gray-700',
+        blue: 'bg-blue-100 text-blue-800',
+        green: 'bg-green-100 text-green-800',
+        red: 'bg-red-100 text-red-800'
+      };
+      estado.className = `px-8 py-4 rounded-full font-bold text-3xl shadow-md ${colores[color]}`;
+      estado.textContent = texto;
+    }
+
+    window.onload = function() {
+      hablar("Presione el botón azul para hablar conmigo, el amarillo para escanear tu medicamento o el rojo para crear alarmas.");
+    };
+
+    // === Reconocimiento de voz ===
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SR) {
+      setEstado('Tu navegador no soporta reconocimiento de voz.', 'red');
+      hablar('Tu navegador no soporta reconocimiento de voz.');
+    } else {
+      const rec = new SR();
+      rec.lang = 'es-MX';
+      rec.continuous = false;
+      rec.interimResults = false;
+
+      btn.addEventListener('click', () => {
+        rec.start();
+        setEstado('Te estoy escuchando...', 'blue');
+        btn.classList.add('animate-pulse');
+        btn.disabled = true;
+      });
+
+      rec.onresult = async (event) => {
+        const r = event.results[0][0];
+        const texto = (r.transcript || '').trim();
+        const asrConf = (typeof r.confidence === 'number') ? r.confidence : null;
+
+        if (!texto) {
+          mostrarNoEntendido('No se detectó voz. Intenta hablar más cerca del micrófono.');
+          return;
+        }
+
+        setEstado('Procesando tu orden...', 'green');
+        hablar('He escuchado tu orden. Dame un momento para responder.');
+        await enviarAOpenAI(texto, asrConf);
+      };
+
+      rec.onerror = (e) => {
+        let msg = 'Error de micrófono. Revisa los permisos.';
+        if (e.error === 'no-speech') msg = 'No se detectó voz.';
+        if (e.error === 'audio-capture') msg = 'No se encontró micrófono.';
+        if (e.error === 'not-allowed') msg = 'Permiso de micrófono denegado.';
+        mostrarNoEntendido(msg);
+      };
+
+      rec.onend = () => {
+        btn.disabled = false;
+        btn.classList.remove('animate-pulse');
+      };
+
+      // === Comunicación con Django/OpenAI ===
+      async function enviarAOpenAI(texto, asrConf) {
+        try {
+          const token = document.querySelector('meta[name="csrf-token"]').content;
+          const datos = new FormData();
+          datos.append('texto', texto);
+          if (asrConf !== null) datos.append('asr_conf', asrConf);
+
+          const resp = await fetch("{% url 'registrar_orden_openai' %}", {
+            method: 'POST',
+            headers: { 'X-CSRFToken': token },
+            body: datos
+          });
+
+          const data = await resp.json();
+
+          // 🧠 PASO 3 — Aprendizaje de voz EVA
+          try {
+            const fd = new FormData();
+            fd.append("texto", texto);
+            await fetch("/procesar_comando_aprendizaje/", {
+              method: "POST",
+              headers: { "X-CSRFToken": token },
+              body: fd
+            });
+            console.log("✅ Patrón de voz guardado para aprendizaje:", texto);
+          } catch (err) {
+            console.warn("❌ No se pudo registrar el patrón de voz:", err);
+          }
+
+          if (!data.ok) {
+            mostrarNoEntendido('No pude procesar la orden. Intenta de nuevo.');
+            return;
+          }
+
+          if (data.cancelado) {
+            mostrarCancelacion(data.respuesta);
+          } else if (data.no_entendido) {
+            mostrarNoEntendido(data.respuesta);
+          } else {
+            mostrarRespuestaOK(data.respuesta);
+          }
+
+        } catch (err) {
+          mostrarNoEntendido('Error al conectar con el servidor.');
+        }
+      }
+
+      // === Crear alarma desde voz ===
+      async function crearAlarmaDesdeVoz(meta) {
+        const token = document.querySelector('meta[name="csrf-token"]').content;
+        const hora = meta.hora || "";
+        const mensaje = meta.mensaje || "¡Es hora de tu alarma!";
+
+        if (!hora) {
+          mostrarNoEntendido("No entendí la hora. ¿Podrías repetir a qué hora pongo la alarma?");
+          return;
+        }
+
+        const fd = new FormData();
+        fd.append("hora", hora);
+        fd.append("mensaje", mensaje);
+
+        try {
+          const resp = await fetch("/crear-alarma/", {
+            method: "POST",
+            headers: { "X-CSRFToken": token },
+            body: fd
+          });
+          const data = await resp.json();
+
+          if (data.ok) {
+            mostrarRespuestaOK(`He creado tu alarma para las ${hora.replace(":", " y ")} con mensaje: ${mensaje}.`);
+          } else {
+            mostrarNoEntendido("No pude crear la alarma, intenta de nuevo.");
+          }
+        } catch (err) {
+          mostrarNoEntendido("Error al guardar la alarma.");
+        }
+      }
+
+      // === Mostrar respuestas ===
+      function mostrarRespuestaOK(texto) {
+        contenedorRespuesta.classList.remove("hidden");
+        contenedorRespuesta.firstElementChild.className =
+          "mx-auto max-w-2xl bg-blue-100 border-4 border-blue-400 text-blue-900 text-3xl font-bold leading-relaxed p-8 rounded-3xl shadow-lg tracking-wide text-center";
+        textoRespuesta.textContent = texto;
+        hablar(texto);
+        setEstado('Respuesta generada correctamente.', 'green');
+      }
+
+      function mostrarNoEntendido(texto) {
+        contenedorRespuesta.classList.remove("hidden");
+        contenedorRespuesta.firstElementChild.className =
+          "mx-auto max-w-2xl bg-amber-100 border-4 border-amber-400 text-amber-900 text-3xl font-bold leading-relaxed p-8 rounded-3xl shadow-lg tracking-wide text-center";
+        textoRespuesta.innerHTML = `<p>${texto}</p>`;
+        hablar(texto);
+      }
+
+      function mostrarCancelacion(texto) {
+        contenedorRespuesta.classList.remove("hidden");
+        contenedorRespuesta.firstElementChild.className =
+          "mx-auto max-w-2xl bg-red-100 border-4 border-red-400 text-red-900 text-3xl font-bold p-8 rounded-3xl shadow-lg text-center";
+        textoRespuesta.textContent = texto;
+        hablar(texto);
+        setEstado("Orden cancelada. Listo para escuchar otra instrucción.", "gray");
+      }
+    }
+
+    // === Variables globales de control ===
+    let alarmaEnCurso = false;
+
+    async function verificarAlarmasPendientes() {
+      try {
+        if (alarmaEnCurso) return;
+        const resp = await fetch("{% url 'alarmas_pendientes' %}");
+        const data = await resp.json();
+        if (!data.ok || !data.alarmas.length) return;
+
+        for (const alarma of data.alarmas) {
+          
+          const mensaje = alarma.mensaje || "¡Es hora de tu alarma!";
+          console.log("🔔 Alarma disparada:", mensaje);
+          alarmaEnCurso = true;
+          hablar("¡Es hora de tu alarma! " + mensaje);
+          const audio = new Audio('/static/miapp/sonidos/alarma.mp3');
+          audio.play();
+
+          await mostrarNotificacionSW({
+          type: "SHOW_NOTIFICATION",
+          title: "⏰ EVA",
+          body: mensaje,
+          id: alarma.id,
+          tag: "eva-alarma-" + alarma.id
+        });
+
+          setEstado("🔔 " + mensaje, "blue");
+          await new Promise(resolve => setTimeout(resolve, 8000));
+
+          const token = document.querySelector("meta[name='csrf-token']").content;
+          const fd = new FormData();
+          fd.append("id", alarma.id);
+          await fetch("{% url 'marcar_entregada' %}", {
+            method: "POST",
+            headers: { "X-CSRFToken": token },
+            body: fd
+          });
+          alarmaEnCurso = false;
+        }
+      } catch (err) {
+        console.error("Error al verificar alarmas:", err);
+        alarmaEnCurso = false;
+      }
+    }
+
+    setInterval(verificarAlarmasPendientes, 3000);
+    window.addEventListener("load", () => verificarAlarmasPendientes());
+  </script>
+
+  <!-- SERVICE WORKER Y NOTIFICACIONES -->
+  <script>
+  async function registrarServiceWorker() {
+    if (!('serviceWorker' in navigator)) {
+      console.warn("SW no soportado en este navegador.");
+      return null;
+    }
+    try {
+      const reg = await navigator.serviceWorker.register("/service-worker.js", { scope: "/" });
+      console.log("✅ SW registrado:", reg);
+      return reg;
+    } catch (err) {
+      console.error("❌ Error registrando SW:", err);
+      return null;
+    }
+  }
+
+  async function solicitarPermisoNotificaciones() {
+    if (!("Notification" in window)) {
+      console.warn("Notifications API no soportada.");
+      return "unsupported";
+    }
+    let permiso = Notification.permission;
+    if (permiso === "default") {
+      permiso = await Notification.requestPermission();
+    }
+    console.log("🔔 Permiso de notificaciones:", permiso);
+    return permiso;
+  }
+
+  async function mostrarNotificacionSW(payload) {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) return;
+    if (Notification.permission !== "granted") return;
+    if (navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: "SHOW_NOTIFICATION",
+        ...payload
+      });
+    } else {
+      reg.showNotification(payload.title || "EVA", {
+        body: payload.body || "Tienes un aviso.",
+        icon: "/static/miapp/icons/icon-192.png",
+        badge: "/static/miapp/icons/icon-192.png",
+        vibrate: [200,100,200],
+        tag: payload.tag || "eva-alert",
+        requireInteraction: true
+      });
+    }
+  }
+
+  (async () => {
+    await registrarServiceWorker();
+    await solicitarPermisoNotificaciones();
+  })();
+  </script>
+
+  <script>
+(() => {
+  // Elementos
+  const modal = document.getElementById('modalCamara');
+  const btnOpen = document.getElementById('btnCamara');
+  const btnCancelar = document.getElementById('btnCancelarCam');
+  const btnTomar = document.getElementById('btnTomarFoto');
+  const btnAceptar = document.getElementById('btnAceptarFoto');
+  const video = document.getElementById('videoPreview');
+  const canvas = document.getElementById('canvasPreview');
+  const inputCapture = document.getElementById('inputCapture');
+  const placeholder = document.getElementById('placeholderCam');
+  const btnRepetir = document.getElementById('btnRepetirFoto');
+
+
+  let stream = null;    // MediaStream de getUserMedia
+  let fotoListo = false; // ¿ya hay captura en canvas?
+  let modo = null;      // 'A' (getUserMedia) | 'B' (input capture)
+
+  // Helpers
+  function show(el) { el.classList.remove('hidden'); }
+  function hide(el) { el.classList.add('hidden'); }
+
+  function resetUI() {
+    fotoListo = false;
+    btnAceptar.disabled = true;
+    show(placeholder);
+    hide(video);
+    hide(canvas);
+    // inputCapture se muestra solo si estamos en modo B
+    inputCapture.value = "";
+  }
+
+  async function abrirModalCamara() {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    resetUI();
+
+    // Decidir modo
+    const isSecure = window.isSecureContext; // HTTPS o localhost
+    const canMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+
+    if (isSecure && canMedia) {
+      modo = 'A';
+      await iniciarCamaraVivo();
+    } else {
+      modo = 'B';
+      iniciarInputCapture();
+    }
+
+    hablar("Coloca el medicamento frente a la cámara y presiona el botón amarillo para tomar la foto.");
+  }
+
+  async function iniciarCamaraVivo() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: false
+      });
+      video.srcObject = stream;
+      hide(placeholder);
+      show(video);
+    } catch (e) {
+      // fallback a modo B
+      modo = 'B';
+      iniciarInputCapture();
+    }
+  }
+
+  function iniciarInputCapture() {
+    show(placeholder); // se quita cuando el usuario escoja foto
+    inputCapture.classList.remove('hidden');
+
+    // al tocar el botón de cámara, disparamos el input
+    btnTomar.onclick = () => inputCapture.click();
+
+    inputCapture.onchange = async (ev) => {
+      const file = ev.target.files && ev.target.files[0];
+      if (!file) return;
+      // Mostrar preview en canvas
+      const img = new Image();
+      img.onload = () => {
+        // canvas full
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        hide(placeholder);
+        show(canvas);
+        fotoListo = true;
+        btnAceptar.disabled = false;
+      };
+      img.src = URL.createObjectURL(file);
+    };
+  }
+
+  function tomarFotoDesdeVideo() {
+    if (!stream) return;
+    const track = stream.getVideoTracks()[0];
+    const settings = track.getSettings && track.getSettings();
+    const w = (video.videoWidth || (settings && settings.width)) || 1280;
+    const h = (video.videoHeight || (settings && settings.height)) || 720;
+
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, w, h);
+    hide(video);
+    show(canvas);
+    fotoListo = true;
+    btnAceptar.disabled = false;
+  }
+
+  function stopStream() {
+    try { stream && stream.getTracks().forEach(t => t.stop()); } catch(_){}
+    stream = null;
+  }
+
+  function cerrarModal() {
+    stopStream();
+    resetUI();
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+
+  async function subirFoto() {
+  if (!fotoListo) return;
+
+  const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
+  if (!blob) return;
+
+  const fd = new FormData();
+  fd.append("foto", blob, "captura.jpg");
+
+  const token = document.querySelector('meta[name="csrf-token"]').content;
+
+  try {
+    const resp = await fetch("{% url 'upload_temporal' %}", {
+      method: "POST",
+      headers: { "X-CSRFToken": token },
+      body: fd
+    });
+    const data = await resp.json();
+
+    if (data.ok) {
+  const descripcion = data.para_que_sirve ? data.para_que_sirve : "No se pudo obtener una descripción.";
+  const texto = `${data.nombre}. ${descripcion}`;
+  mostrarRespuestaOK(texto);
+  hablar(texto);
+  cerrarModal();
+} else {
+  const msg = data.error || "La foto tomada . Intenta otra foto.";
+  mostrarNoEntendido(msg);
+  hablar(msg);
+}
+
+  } catch (e) {
+    hablar("Ocurrió un error al subir la foto.");
+    alert("Error al subir la foto.");
+  }
+
+
+  // === Modal de aviso cuando no es medicamento ===
+const modalNoMed = document.getElementById("modalNoMedicamento");
+const btnCerrarNoMed = document.getElementById("btnCerrarNoMed");
+
+function mostrarAvisoNoMedicamento() {
+  modalNoMed.classList.remove("hidden");
+  hablar("La foto no parece mostrar un medicamento. Intenta tomar otra foto más clara o desde otro ángulo.");
+}
+
+btnCerrarNoMed.addEventListener("click", () => {
+  modalNoMed.classList.add("hidden");
+});
+
+
+
+
+  }
+
+  // Eventos
+  btnOpen && btnOpen.addEventListener('click', abrirModalCamara);
+  btnCancelar.addEventListener('click', () => { hablar("Cancelado."); cerrarModal(); });
+
+  // En modo A, el botón tomar hace snapshot; en modo B, lo reasignamos a inputCapture.click()
+  btnTomar.addEventListener('click', () => {
+    if (modo === 'A') {
+      tomarFotoDesdeVideo();
+      hablar("Foto tomada. Si quedó bien, presiona aceptar, o sino presiona el boton azul para repetir la foto.");
+    }
+    // En modo B, btnTomar.onclick se reasigna en iniciarInputCapture()
+  });
+
+  btnAceptar.addEventListener('click', subirFoto);
+
+  btnRepetir.addEventListener('click', () => {
+  if (modo === 'A') {
+    // Vuelve a mostrar la cámara en vivo
+    show(video);
+    hide(canvas);
+    fotoListo = false;
+    btnAceptar.disabled = true;
+    hablar("Vuelve a tomar la foto cuando estés listo.");
+  } else {
+    // Si estás en modo B (desde galería o captura directa)
+    inputCapture.click();
+  }
+});
+
+  // Cierra cámara si el usuario cierra el modal con ESC
+  window.addEventListener('keydown', (ev) => {
+    if (ev.key === "Escape" && !modal.classList.contains('hidden')) {
+      cerrarModal();
+    }
+  });
+
+})();
+</script>
+
+<script>
+// === FUNCIÓN PARA OBTENER EL CSRF TOKEN ===
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== "") {
+    const cookies = document.cookie.split(";");
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.startsWith(name + "=")) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+
+// === PANEL DE ALARMAS SIN CAMBIAR DE PÁGINA ===
+const btnAlarmas = document.getElementById("btnAlarmas");
+const panel = document.getElementById("panelAlarmas");
+const cerrar = document.getElementById("cerrarPanel");
+const lista = document.getElementById("listaAlarmas");
+
+// Mostrar panel y cargar alarmas
+btnAlarmas.addEventListener("click", async () => {
+  panel.classList.remove("hidden");
+  await cargarAlarmas();
+});
+
+// Cerrar panel
+cerrar.addEventListener("click", () => {
+  panel.classList.add("hidden");
+});
+
+// Cargar alarmas dinámicamente (versión grande y accesible)
+async function cargarAlarmas() {
+  lista.innerHTML = "<p class='text-center text-gray-500 text-3xl md:text-4xl'>Cargando alarmas...</p>";
+  const res = await fetch("/api/alarmas/", { method: "GET" });
+  const data = await res.json();
+
+  if (!data.ok || data.alarmas.length === 0) {
+    lista.innerHTML = "<p class='text-center text-gray-500 text-3xl md:text-4xl'>No tienes alarmas guardadas.</p>";
+    return;
+  }
+
+  lista.innerHTML = "";
+  data.alarmas.forEach(a => {
+    const li = document.createElement("li");
+    li.className = `
+      flex flex-col md:flex-row justify-between items-center 
+      bg-yellow-100 border-4 border-yellow-300 
+      p-6 md:p-8 rounded-[2rem] shadow-lg 
+      hover:shadow-xl transition-all duration-300
+    `;
+
+    li.innerHTML = `
+      <div class="flex flex-col items-center md:items-start space-y-3 text-center md:text-left w-full md:w-auto">
+        <p class="text-5xl md:text-6xl font-extrabold text-blue-700">⏰ ${a.hora}</p>
+        <p class="text-gray-900 text-3xl md:text-4xl font-bold">${a.mensaje}</p>
+        ${a.dias ? `<p class="text-blue-700 text-2xl md:text-3xl font-semibold mt-2">📅 ${a.dias}</p>` : ""}
+      </div>
+
+      <button 
+        class="bg-red-600 hover:bg-red-700 text-white 
+               font-extrabold text-3xl md:text-4xl 
+               py-4 px-10 mt-6 md:mt-0 rounded-[2rem] shadow-md 
+               transition transform hover:scale-105 active:scale-95"
+        onclick="eliminarAlarma(${a.id})">
+        Eliminar
+      </button>
+    `;
+
+    lista.appendChild(li);
+  });
+}
+
+// Eliminar alarma con AJAX
+async function eliminarAlarma(id) {
+  const btn = document.querySelector(`button[onclick="eliminarAlarma(${id})"]`);
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Eliminando...";
+  }
+
+  const formData = new FormData();
+  formData.append("id", id);
+
+  const res = await fetch("/api/alarmas/eliminar/", {
+    method: "POST",
+    headers: { "X-CSRFToken": getCookie("csrftoken") },
+    body: formData
+  });
+
+  const data = await res.json();
+
+  if (data.ok) {
+    const li = btn.closest("li");
+    li.classList.add("opacity-0", "scale-95", "transition", "duration-300");
+    setTimeout(() => li.remove(), 300);
+    const aviso = document.createElement("div");
+    aviso.textContent = "✅ Alarma eliminada";
+    aviso.className = "fixed bottom-8 right-8 bg-green-600 text-white px-6 py-3 rounded-xl shadow-lg animate-bounce";
+    document.body.appendChild(aviso);
+    setTimeout(() => aviso.remove(), 2000);
+  } else {
+    alert("❌ No se pudo eliminar la alarma: " + data.error);
+  }
+}
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/service-worker.js').then(reg => {
+    console.log("🧩 EVA Service Worker listo:", reg);
+
+    // 🧠 Guardar IDs de alarmas ya notificadas (para no repetir)
+    const mostradas = new Set();
+
+    // 🔁 Cada 20 segundos revisa las alarmas pendientes
+    setInterval(async () => {
+      try {
+        const res = await fetch("/alarmas/pendientes/");
+        const data = await res.json();
+
+        if (data.ok && data.alarmas.length > 0) {
+          for (const alarma of data.alarmas) {
+            // Evita mostrar la misma alarma más de una vez
+            if (mostradas.has(alarma.id)) continue;
+
+            mostradas.add(alarma.id);
+
+            if (navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({
+                type: "SHOW_NOTIFICATION",
+                title: "⏰ EVA",
+                body: alarma.mensaje,
+                id: alarma.id,
+                tag: "alarma-" + alarma.id
+              });
+              console.log("📣 Notificación local mostrada:", alarma.mensaje);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("⚠️ Error revisando alarmas:", err);
+      }
+    }, 20000);
+  });
+}
+</script>
+
+<script>
+// Canal de comunicación entre Django y SW
+if ('BroadcastChannel' in window) {
+  const ch = new BroadcastChannel('eva_notif');
+  ch.onmessage = (e) => {
+    const data = e.data || {};
+    if (navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: "SHOW_NOTIFICATION",
+        ...data
+      });
+      console.log("📣 Notificación reenviada al SW:", data);
+    }
+  };
+}
+</script>
+
+<script>
+// --- Util: convierte la VAPID public key base64url -> Uint8Array
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; ++i) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+(async () => {
+  // 1) Espera al SW
+  const reg = await navigator.serviceWorker.ready;
+
+  // 2) Pide permiso
+  const permiso = (Notification.permission === "default")
+    ? await Notification.requestPermission()
+    : Notification.permission;
+  if (permiso !== "granted") {
+    console.warn("🔕 Sin permiso de notificaciones");
+    return;
+  }
+
+  // 3) Suscríbete con VAPID correcta
+  // Usa tu clave pública real (base64url, sin espacios/line breaks)
+  const vapidPublicKey = "BNyd3ExNE_YmtBL6SVHrH1cjlt3OHpExN5Jq17YUf_SGUfWmZGNx7D07ulrwfaP92g26G8KlC_EhH2ZpJMxabag";
+  let subscription;
+  try {
+    subscription = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+    });
+    console.log("✅ Push subscription creada:", subscription);
+  } catch (err) {
+    console.error("❌ Error al suscribirse a Push:", err);
+    return;
+  }
+
+  // 4) Envía la suscripción al backend
+  try {
+    const resp = await fetch("/save_subscription/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(subscription)
+    });
+    const data = await resp.json();
+    console.log("✅ Suscripción guardada:", data);
+  } catch (err) {
+    console.error("❌ Error guardando suscripción:", err);
+  }
+})();
+</script>
+
+<script>
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/service-worker.js")
+    .then(reg => console.log("✅ SW registrado:", reg.scope))
+    .catch(err => console.error("❌ SW error:", err));
+
+  // 🟡 Reproducir sonido desde el SW
+  navigator.serviceWorker.addEventListener("message", event => {
+    if (event.data?.action === "play_sound") {
+      const audio = new Audio("{% static 'miapp/sonidos/alarma.mp3' %}");
+      audio.play().catch(err => console.warn("Error reproduciendo sonido:", err));
+    }
+  });
+}
+</script>
+
+<script>
+(() => {
+  const modal = document.getElementById('modalAlarmaSimple');
+  const paso1 = document.getElementById('paso1');
+  const paso2 = document.getElementById('paso2');
+  const paso3 = document.getElementById('paso3');
+  const horaDisplay = document.getElementById('horaDisplay');
+  const minDisplay = document.getElementById('minDisplay');
+  const nombreMed = document.getElementById('nombreMed');
+  const amBtn = document.getElementById('amBtn');
+  const pmBtn = document.getElementById('pmBtn');
+
+  let hora = 8, minutos = 0, periodo = "AM";
+  const diasSeleccionados = new Set();
+
+  // === Mostrar modal ===
+  document.getElementById('btnAlarmaManual').addEventListener('click', () => {
+    modal.classList.remove('hidden');
+    paso1.classList.remove('hidden');
+    paso2.classList.add('hidden');
+    paso3.classList.add('hidden');
+    try { hablar("Selecciona la hora y los minutos de tu alarma y presiona continuar."); } catch {}
+  });
+
+  // === Actualizar displays ===
+  const updateDisplay = () => {
+    horaDisplay.textContent = String(hora).padStart(2,'0');
+    minDisplay.textContent = String(minutos).padStart(2,'0');
+  };
+
+  // === Cambiar hora y minutos ===
+  document.getElementById('masHora').onclick = () => { hora = (hora % 12) + 1; updateDisplay(); };
+  document.getElementById('menosHora').onclick = () => { hora = hora === 1 ? 12 : hora - 1; updateDisplay(); };
+  document.getElementById('masMin').onclick = () => { minutos = (minutos + 5) % 60; updateDisplay(); };
+  document.getElementById('menosMin').onclick = () => { minutos = (minutos - 5 + 60) % 60; updateDisplay(); };
+
+  // === AM / PM ===
+  function actualizarPeriodo(nuevo) {
+    periodo = nuevo;
+    if (nuevo === "AM") {
+      amBtn.classList.add('bg-blue-500','text-white');
+      amBtn.classList.remove('bg-gray-300','text-gray-800');
+      pmBtn.classList.add('bg-gray-300','text-gray-800');
+      pmBtn.classList.remove('bg-blue-500','text-white');
+    } else {
+      pmBtn.classList.add('bg-blue-500','text-white');
+      pmBtn.classList.remove('bg-gray-300','text-gray-800');
+      amBtn.classList.add('bg-gray-300','text-gray-800');
+      amBtn.classList.remove('bg-blue-500','text-white');
+    }
+    try { hablar(nuevo === "AM" ? "A M seleccionado" : "P M seleccionado"); } catch {}
+  }
+
+  amBtn.onclick = () => actualizarPeriodo("AM");
+  pmBtn.onclick = () => actualizarPeriodo("PM");
+
+  // === Navegación ===
+  document.getElementById('continuarPaso1').onclick = () => {
+    paso1.classList.add('hidden'); paso2.classList.remove('hidden');
+    hablar("Selecciona los días de la semana.");
+  };
+  document.getElementById('cancelarPaso1').onclick = () => modal.classList.add('hidden');
+  document.getElementById('volverPaso1').onclick = () => { paso2.classList.add('hidden'); paso1.classList.remove('hidden'); };
+  document.getElementById('continuarPaso2').onclick = () => { paso2.classList.add('hidden'); paso3.classList.remove('hidden'); hablar("Escribe el nombre del medicamento y guarda tu alarma."); };
+  document.getElementById('volverPaso2').onclick = () => { paso3.classList.add('hidden'); paso2.classList.remove('hidden'); };
+
+  // === Días ===
+  document.querySelectorAll('#diasBtns .dia').forEach(btn => {
+    btn.onclick = () => {
+      const d = btn.textContent.trim();
+      if (diasSeleccionados.has(d)) {
+        diasSeleccionados.delete(d);
+        btn.classList.remove('bg-blue-500','text-white');
+        btn.classList.add('bg-gray-300','text-gray-800');
+      } else {
+        diasSeleccionados.add(d);
+        btn.classList.add('bg-blue-500','text-white');
+        btn.classList.remove('bg-gray-300','text-gray-800');
+      }
+    };
+  });
+
+  // === Guardar alarma ===
+  document.getElementById('guardarAlarmaFinal').onclick = async () => {
+    const nombre = nombreMed.value.trim();
+    if (!nombre) { hablar("Por favor escribe el nombre del medicamento."); return; }
+
+    const h24 = (periodo==="PM" && hora!==12 ? hora+12 : periodo==="AM" && hora===12 ? 0 : hora);
+    const horaFinal = `${String(h24).padStart(2,'0')}:${String(minutos).padStart(2,'0')}`;
+
+    const token = document.querySelector('meta[name="csrf-token"]').content;
+    const fd = new FormData();
+    fd.append('hora', horaFinal);
+    fd.append('mensaje', nombre);
+    fd.append('dias', Array.from(diasSeleccionados).join(', '));
+
+    const res = await fetch('/crear-alarma/', { method:'POST', headers:{'X-CSRFToken':token}, body:fd });
+    const data = await res.json();
+    if (data.ok) {
+      hablar(`He creado tu alarma para ${Array.from(diasSeleccionados).join(', ')} a las ${horaDisplay.textContent}:${minDisplay.textContent} ${periodo}.`);
+      modal.classList.add('hidden');
+    } else {
+      alert("Error al guardar la alarma.");
+    }
+  };
+})();
+</script>
+
+<!-- MODAL DE AVISO NO ES MEDICAMENTO -->
+<div id="modalNoMedicamento"
+     class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center">
+  <div class="bg-white rounded-3xl shadow-2xl text-center p-10 w-[90%] max-w-3xl border-8 border-yellow-400">
+    <h2 class="text-6xl mb-6">⚠️</h2>
+    <h3 class="text-4xl font-extrabold text-yellow-700 mb-4">No es un medicamento</h3>
+    <p class="text-3xl text-gray-800 font-semibold mb-8 leading-relaxed">
+      La foto no parece mostrar un medicamento.<br>
+      Por favor intenta tomar otra foto más clara o desde otro ángulo.
+    </p>
+    <button id="btnCerrarNoMed"
+            class="px-10 py-4 bg-yellow-500 hover:bg-yellow-600 text-white text-3xl font-bold rounded-2xl shadow-lg transition transform hover:scale-105 active:scale-95">
+      Entendido
+    </button>
+  </div>
+</div>
+
+
+</body>
+</html>
