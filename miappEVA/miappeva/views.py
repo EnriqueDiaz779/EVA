@@ -28,15 +28,18 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from .models import PushSubscription
 
+try:
+    from pywebpush import webpush, WebPushException
+except Exception as e:
+    print("⚠️ WebPush desactivado (cryptography/DLL):", e)
+    webpush = None
+    WebPushException = Exception
 
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
 logger = logging.getLogger(__name__)
 
-# =====================================
-# LOGIN / LOGOUT / INICIO
-# =====================================
-
+#---login----#
 def login_view(request):
     if request.user.is_authenticated:
         return redirect('inicio')
@@ -73,7 +76,7 @@ def login_view(request):
     messages.success(request, "Bienvenido de nuevo.")
     return redirect('inicio')
 
-
+#----usuarios en bd------#
 def registrar_usuario_en_db(nombre_completo, password, tipo="adulto"):
     """Registra un nuevo usuario en la tabla Usuarios"""
     from django.contrib.auth.hashers import make_password
@@ -88,7 +91,7 @@ def registrar_usuario_en_db(nombre_completo, password, tipo="adulto"):
     except Exception as e:
         print(f"❌ Error al registrar usuario en DB: {e}")
 
-
+#----login en bd------#
 def registrar_login_en_db(username, request):
     """Registra el login en una tabla de auditoría"""
     try:
@@ -111,7 +114,7 @@ def registrar_login_en_db(username, request):
     except Exception as e:
         print(f"❌ Error al registrar login en DB: {e}")
 
-
+#-----ip client-----#
 def get_client_ip(request):
     """Obtiene la IP del cliente"""
     x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
@@ -121,25 +124,63 @@ def get_client_ip(request):
         ip = request.META.get('REMOTE_ADDR')
     return ip
 
-
+#-----inicio----#
 @login_required
 def inicio(request):
     nombre = request.user.first_name or request.user.username
     ultimas = OrdenVoz.objects.filter(usuario=request.user)[:5]
     return render(request, 'miapp/inicio.html', {"nombre": nombre, "ultimas": ultimas})
 
-
+#------salida----#
 @login_required
 def salir(request):
     auth_logout(request)
     messages.info(request, "Sesión cerrada. Puedes volver a entrar cuando quieras.")
     return redirect("login")
 
+#----registro_cuidador en bd------#
+def registro_cuidador_view(request):
+    # GET -> muestra el formulario
+    if request.method != "POST":
+        return render(request, "miapp/registro_cuidador.html")
 
-# =====================================
-# OPENAI – Órdenes de voz
-# =====================================
+    # POST -> toma datos del FORM (no JSON)
+    nombre_completo = (request.POST.get("nombre_completo") or "").strip()
+    password = request.POST.get("password") or ""
+    correo = (request.POST.get("correo") or "").strip().lower()
+    telefono = (request.POST.get("telefono") or "").strip()
 
+    if not nombre_completo or not password or not correo:
+        messages.error(request, "Faltan campos: nombre completo, correo y contraseña.")
+        return render(request, "miapp/registro_cuidador.html")
+
+    # Reusa la MISMA lógica del API (sin duplicar)
+    # OJO: Aquí NO llamamos HTTP, llamamos funciones directas
+    if _mysql_get_usuario_por_correo(correo):
+        messages.error(request, "Ese correo ya está registrado.")
+        return render(request, "miapp/registro_cuidador.html")
+
+    if User.objects.filter(username=correo).exists():
+        messages.error(request, "Ese usuario ya existe.")
+        return render(request, "miapp/registro_cuidador.html")
+
+    # Crear en Django
+    user = User.objects.create_user(username=correo, password=password, first_name=nombre_completo)
+
+    # Insertar en MySQL
+    try:
+        _mysql_insert_usuario(nombre_completo, password, "cuidador", correo=correo, telefono=telefono)
+    except Exception as e:
+        user.delete()
+        messages.error(request, f"No se pudo registrar en MySQL: {e}")
+        return render(request, "miapp/registro_cuidador.html")
+
+    # Iniciar sesión y mandar a inicio
+    auth_login(request, user)
+    messages.success(request, "Cuidador registrado correctamente.")
+    return redirect("inicio")
+
+#---- OPENAI – Órdenes de voz -----#
 @login_required
 @require_POST
 def registrar_orden_openai(request):
@@ -197,9 +238,7 @@ def registrar_orden_openai(request):
             "alarm_created": False,
         })
     
-
-
-        # 🔵 BLOQUE NUEVO DEFINITIVO — Filtro EVA Inteligente
+    #Filtro EVA Inteligente
     palabras_clave_medicamentos = [
         "medicamento", "pastilla", "tableta", "jarabe", "inyección", "cápsula",
         "medicina", "tratamiento", "dosis", "efecto", "efectos secundarios",
@@ -254,9 +293,6 @@ def registrar_orden_openai(request):
             "meta": {},
             "alarm_created": False,
         })
-    # 🔵 FIN BLOQUE NUEVO DEFINITIVO
-
-
 
     # CASO 3: Consultar a OpenAI
     result = preguntar_openai(texto)
@@ -296,7 +332,7 @@ def registrar_orden_openai(request):
         meta={"ia_conf": ia_conf, "asr_conf": asr_conf, "provider": "openai", "meta": meta},
     )
 
-    # 🟢 NUEVO: si la intención es "alarma", crea la alarma en BD aquí mismo
+    # Si la intención es "alarma", crea la alarma en BD aquí mismo
     alarm_created = False
     if intent == "alarma":
         hora = (meta.get("hora") or "").strip()
@@ -327,38 +363,13 @@ def registrar_orden_openai(request):
         "alarm_created": alarm_created,
     })
 
-
-# =====================================
-# ALARMAS – API
-# =====================================
-
-@login_required
-@require_POST
-def crear_alarma(request):
-    fecha = request.POST.get("fecha")  # opcional
-    hora = request.POST.get("hora")
-    mensaje = request.POST.get("mensaje", "¡Es hora de tu alarma!")
-
-    if not hora:
-        return JsonResponse({"ok": False, "error": "Hora requerida"}, status=400)
-
-    alarma = Alarma.objects.create(
-        fecha=fecha or None,
-        hora=hora,
-        mensaje=mensaje,
-        activa=True
-    )
-    logger.info(f"🟢 Alarma creada por endpoint: {alarma.hora} - {alarma.mensaje}")
-    return JsonResponse({"ok": True, "id": alarma.id})
-
+#------pendientes------#
 @login_required
 def pendientes(request):
     """
     Detecta alarmas que deben sonar ahora (+/-30 s),
     marca su disparo y envía notificación Web Push si hay suscripciones.
     """
-    from pywebpush import webpush, WebPushException
-
     ahora = timezone.localtime()
     margen = timedelta(seconds=30)
 
@@ -385,6 +396,10 @@ def pendientes(request):
             "mensaje": a.mensaje,
             "hora": a.hora.strftime("%H:%M"),
         })
+
+        # Si WebPush está desactivado, NO intentar enviar push
+        if webpush is None:
+            continue
 
         # === 📤 Notificación Web Push ===
         payload = {
@@ -417,6 +432,7 @@ def pendientes(request):
 
     return JsonResponse({"ok": True, "alarmas": data})
 
+#--------Marcar entregada (alarmas)----#
 @login_required
 @require_POST
 @csrf_exempt
@@ -442,6 +458,7 @@ def marcar_entregada(request):
     except Alarma.DoesNotExist:
         return JsonResponse({"ok": False, "error": "No existe"}, status=404)
 
+#-------reprogramar alarma------#
 @login_required
 @require_POST
 @csrf_exempt
@@ -476,8 +493,7 @@ def reprogramar_alarma(request):
         print("❌ Error al reprogramar alarma:", e)
         return JsonResponse({"ok": False, "error": str(e)}, status=500)
 
-
-# =====================================#
+#-----comandos de aprendizaje-----#
 @login_required
 @require_POST
 def procesar_comando_aprendizaje(request):
@@ -491,7 +507,7 @@ def procesar_comando_aprendizaje(request):
     if not texto_reconocido:
         return JsonResponse({"ok": False, "mensaje": "No se recibió texto."}, status=400)
 
-    # 🔹 Lista base de comandos conocidos por EVA
+    # Lista base de comandos conocidos por EVA
     comandos_base = [
         "activar alarma",
         "detener alarma",
@@ -506,14 +522,14 @@ def procesar_comando_aprendizaje(request):
     mejor_coincidencia = None
     mayor_similitud = 0.0
 
-    # 🔸 Compara el texto reconocido con cada comando base
+    # Compara el texto reconocido con cada comando base
     for comando in comandos_base:
         porcentaje = similitud_texto(texto_reconocido, comando)
         if porcentaje > mayor_similitud:
             mayor_similitud = porcentaje
             mejor_coincidencia = comando
 
-    # 🔸 Guarda el patrón de pronunciación
+    # Guarda el patrón de pronunciación
     PatronVoz.objects.create(
         usuario=usuario,
         comando_original=mejor_coincidencia,
@@ -521,7 +537,7 @@ def procesar_comando_aprendizaje(request):
         similitud=mayor_similitud
     )
 
-    # 🔹 Genera la respuesta adaptativa
+    # Genera la respuesta adaptativa
     if mayor_similitud >= 0.7:
         mensaje = f"Entendí que quisiste decir: '{mejor_coincidencia}'."
     else:
@@ -534,55 +550,88 @@ def procesar_comando_aprendizaje(request):
         "similitud": round(mayor_similitud * 100, 1)
     })
 
+#-----------imagen temporal-------------#
 @login_required
 @require_POST
 def upload_temporal(request):
     """
-    Recibe un archivo 'foto' (image/*). Valida, comprime a JPEG (max 1280px) y guarda en CapturaTemporal.
+    Recibe un archivo 'foto' (image/*), valida, opcionalmente comprime,
+    guarda CapturaTemporal y analiza con OpenAI.
+    Devuelve JSON con nombre/para_que_sirve/confianza.
     """
-    f = request.FILES.get("foto")
-    if not f:
-        return JsonResponse({"ok": False, "error": "No recibí la imagen."}, status=400)
-
-    # Validar mime simple
-    content_type = (getattr(f, "content_type", "") or "").lower()
-    if not content_type.startswith("image/"):
-        return JsonResponse({"ok": False, "error": "Formato no válido."}, status=400)
-
     try:
-        # Abrir con Pillow y recomprimir
-        img = Image.open(f)
-        img = img.convert("RGB")  # evitar problemas con PNG/transparencia
+        f = request.FILES.get("foto")
+        if not f:
+            return JsonResponse({"ok": False, "error": "No llegó la imagen."}, status=400)
 
-        # redimensionar a máximo 1280px lado mayor
-        max_side = 1280
-        w, h = img.size
-        scale = min(max_side / float(max(w, h)), 1.0)
-        if scale < 1.0:
-            new_size = (int(w * scale), int(h * scale))
-            img = img.resize(new_size, Image.LANCZOS)
+        # ✅ Validar mime simple (de la versión 1)
+        content_type = (getattr(f, "content_type", "") or "").lower()
+        if not content_type.startswith("image/"):
+            return JsonResponse({"ok": False, "error": "Formato no válido."}, status=400)
 
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=85, optimize=True)
-        buf.seek(0)
+        # ✅ (Opcional) Comprimir/redimensionar ANTES de guardar (de la versión 1)
+        # Esto reduce peso y acelera el análisis.
+        try:
+            img = Image.open(f).convert("RGB")
+            max_side = 1280
+            w, h = img.size
+            scale = min(max_side / float(max(w, h)), 1.0)
+            if scale < 1.0:
+                img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
 
-        django_file = InMemoryUploadedFile(
-            buf, field_name="ImageField", name="captura.jpg",
-            content_type="image/jpeg", size=buf.getbuffer().nbytes, charset=None
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=85, optimize=True)
+            buf.seek(0)
+
+            archivo = InMemoryUploadedFile(
+                buf, field_name="foto", name="captura.jpg",
+                content_type="image/jpeg", size=buf.getbuffer().nbytes, charset=None
+            )
+        except Exception:
+            # Si falla compresión, usamos el original sin romper el flujo
+            archivo = f
+
+        # Guardar temporal
+        cap = CapturaTemporal.objects.create(
+            usuario=request.user,
+            imagen=archivo,
+            estado="pendiente"
         )
 
-        cap = CapturaTemporal.objects.create(usuario=request.user, imagen=django_file, estado="pendiente")
+        # Analizar con IA
+        img_path = cap.imagen.path
+        nombre, para_que_sirve, confianza, debug_text = analizar_imagen_openai(img_path)
 
-        return JsonResponse({"ok": True, "id": cap.id, "url": cap.imagen.url})
+        cap.estado = "analizado"
+        cap.save(update_fields=["estado"])
+
+        if nombre:
+            MedicamentoReconocido.objects.create(
+                usuario=request.user,
+                captura=cap,
+                nombre_detectado=nombre,
+                descripcion=para_que_sirve,
+                confianza=confianza
+            )
+            return JsonResponse({
+                "ok": True,
+                "cap_id": cap.id,
+                "nombre": nombre,
+                "para_que_sirve": para_que_sirve,
+                "confianza": round(confianza, 3)
+            })
+
+        return JsonResponse({
+            "ok": False,
+            "cap_id": cap.id,
+            "error": "No pude identificar el medicamento en la foto.",
+            "debug": debug_text
+        }, status=200)
 
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).exception("Error guardando captura temporal")
-        return JsonResponse({"ok": False, "error": "No pude procesar la imagen."}, status=500)
-    
+        return JsonResponse({"ok": False, "error": f"Error guardando/analizando: {e}"}, status=500)
 
-#----------------------------------------------------------#
-
+#-----Extraer json-----#
 def _extraer_json_seguro(texto):
     """
     Intenta extraer JSON aunque venga rodeado de texto/markdown.
@@ -600,6 +649,7 @@ def _extraer_json_seguro(texto):
     except Exception:
         return {}
 
+#--------analizar imagen (escaner)-----------""
 def analizar_imagen_openai(image_path: str):
     """
     Envía la imagen a OpenAI (modelo con visión) pidiendo un JSON con:
@@ -610,7 +660,7 @@ def analizar_imagen_openai(image_path: str):
     with open(image_path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode()
 
-    # 🧠 PROMPT MEJORADO
+    # PROMPT 
     prompt = (
         "Eres un asistente experto en farmacología. "
         "Analiza la foto de un medicamento (empaque o caja) y devuelve SOLO un JSON claro en español "
@@ -653,65 +703,7 @@ def analizar_imagen_openai(image_path: str):
         print(f"❌ ERROR en OpenAI: {e}")
         return "", "", 0.0, f"ERROR_OPENAI: {e}"
 
-
-@login_required
-@require_POST
-def upload_temporal(request):
-    """
-    Recibe la foto, guarda CapturaTemporal y analiza con OpenAI.
-    Devuelve JSON con nombre/para_que_sirve/confianza.
-    """
-    try:
-        archivo = request.FILES.get("foto")
-        if not archivo:
-            return JsonResponse({"ok": False, "error": "No llegó la imagen."}, status=400)
-
-        # Guardar temporal
-        cap = CapturaTemporal.objects.create(
-            usuario=request.user,
-            imagen=archivo,
-            estado="pendiente"
-        )
-
-        # Analizar con IA
-        img_path = cap.imagen.path  # ruta absoluta en disco
-        nombre, para_que_sirve, confianza, debug_text = analizar_imagen_openai(img_path)
-
-        # Actualizar estado y registrar resultado
-        cap.estado = "analizado"
-        cap.save(update_fields=["estado"])
-
-        if nombre:
-            MedicamentoReconocido.objects.create(
-                usuario=request.user,
-                captura=cap,
-                nombre_detectado=nombre,
-                descripcion=para_que_sirve,  # Se guarda la descripción en BD
-                confianza=confianza
-            )
-            return JsonResponse({
-                "ok": True,
-                "cap_id": cap.id,
-                "nombre": nombre,
-                "para_que_sirve": para_que_sirve,
-                "confianza": round(confianza, 3)
-            })
-
-        # Si no hubo nombre reconocido
-        return JsonResponse({
-            "ok": False,
-            "cap_id": cap.id,
-            "error": "No pude identificar el medicamento en la foto.",
-            "debug": debug_text
-        }, status=200)
-
-    except Exception as e:
-        return JsonResponse({"ok": False, "error": f"Error guardando/analizando: {e}"}, status=500)
-
-# =====================================
-# OBTENER ALARMAS (AJAX)
-# =====================================
-
+#-----crear alarmas-----#
 @login_required
 @require_POST
 def crear_alarma(request):
@@ -738,6 +730,7 @@ def crear_alarma(request):
         logger.exception("❌ Error al crear alarma")
         return JsonResponse({"ok": False, "error": str(e)}, status=500)
 
+#-------obtener alarma-----#
 @login_required
 def obtener_alarmas(request):
     """Devuelve las alarmas activas en formato JSON"""
@@ -753,6 +746,7 @@ def obtener_alarmas(request):
     ]
     return JsonResponse({"ok": True, "alarmas": data})
 
+#------eliminar alarma----#
 @login_required
 @require_POST
 @csrf_exempt
@@ -778,8 +772,8 @@ def eliminar_alarma_ajax(request):
     except Exception as e:
         print(f"❌ Error al eliminar alarma: {e}")
         return JsonResponse({"ok": False, "error": str(e)}, status=500)
-
-
+3
+#------notificar SW-----#
 @csrf_exempt
 def notificar_serviceworker(request):
     """
@@ -809,9 +803,7 @@ def notificar_serviceworker(request):
         print("❌ Error reenviando notificación:", e)
         return JsonResponse({"ok": False, "error": str(e)}, status=500)
 
-# ==============================
-# 🔔 WEB PUSH API
-# ==============================
+#--------push------#
 @csrf_exempt
 @login_required
 def save_subscription(request):
@@ -839,15 +831,13 @@ def save_subscription(request):
     except Exception as e:
         return JsonResponse({"ok": False, "error": str(e)}, status=500)
 
-
-# ------------------------------
-# ENVÍO DE PUSH DESDE EL BACKEND
-# ------------------------------
-from pywebpush import webpush, WebPushException
-
+#--------notificacion prueba----#
 @csrf_exempt
 def send_push_notification(request):
     """Envía una notificación push de prueba a todas las suscripciones guardadas."""
+    if webpush is None:
+        return JsonResponse({"ok": False, "error": "WebPush desactivado en este entorno."}, status=503)
+    
     from django.utils import timezone
 
     payload = {
@@ -878,3 +868,162 @@ def send_push_notification(request):
             sub.delete()  # borra suscripción inválida
 
     return JsonResponse({"ok": True, "enviadas": total})
+
+#-----flutter------#
+from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.hashers import make_password
+import json
+
+def _json_body(request):
+    try:
+        return json.loads(request.body.decode("utf-8") or "{}")
+    except Exception:
+        return {}
+
+def _mysql_insert_usuario(nombre_completo, password, tipo, correo=None, telefono=None):
+    password_hash = make_password(password)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO Usuarios (Nombre_Completo, password_hash, Tipo, correo, Telefono, activo)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            [nombre_completo, password_hash, tipo, correo or None, telefono or None, True]
+        )
+
+def _mysql_get_usuario_por_correo(correo):
+    if not correo:
+        return None
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT Id_Usuario, Nombre_Completo, Tipo, correo, Telefono FROM Usuarios WHERE correo=%s LIMIT 1",
+            [correo]
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "id": row[0],
+            "nombre_completo": row[1],
+            "tipo": row[2],
+            "correo": row[3],
+            "telefono": row[4],
+        }
+
+@csrf_exempt
+def api_v1_register_cuidador(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Método no permitido"}, status=405)
+
+    data = _json_body(request)
+    nombre_completo = (data.get("nombre_completo") or "").strip()
+    password = data.get("password") or ""
+    correo = (data.get("correo") or "").strip().lower()
+    telefono = (data.get("telefono") or "").strip()
+
+    if not nombre_completo or not password or not correo:
+        return JsonResponse({"ok": False, "error": "Faltan campos (nombre_completo, correo, password)."}, status=400)
+
+    # 1) Evitar duplicado en MySQL por correo (UNIQUE)
+    if _mysql_get_usuario_por_correo(correo):
+        return JsonResponse({"ok": False, "error": "Ese correo ya está registrado."}, status=409)
+
+    # 2) En Django usamos el correo como username (ideal para Flutter)
+    if User.objects.filter(username=correo).exists():
+        return JsonResponse({"ok": False, "error": "Ese usuario ya existe."}, status=409)
+
+    # 3) Crear en Django
+    user = User.objects.create_user(username=correo, password=password, first_name=nombre_completo)
+
+    # 4) Insertar en MySQL
+    try:
+        _mysql_insert_usuario(nombre_completo, password, "cuidador", correo=correo, telefono=telefono)
+    except Exception as e:
+        user.delete()
+        return JsonResponse({"ok": False, "error": f"No se pudo registrar en MySQL: {e}"}, status=500)
+
+    # 5) Iniciar sesión (sesión/cookies) — útil también en web
+    auth_login(request, user)
+
+    return JsonResponse({
+        "ok": True,
+        "user": {"username": user.username, "nombre_completo": nombre_completo, "tipo": "cuidador", "correo": correo, "telefono": telefono}
+    })
+
+@csrf_exempt
+def api_v1_register_adulto(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Método no permitido"}, status=405)
+
+    data = _json_body(request)
+    nombre_completo = (data.get("nombre_completo") or "").strip()
+    password = data.get("password") or ""
+    correo = (data.get("correo") or "").strip().lower()
+    telefono = (data.get("telefono") or "").strip()
+
+    if not nombre_completo or not password or not correo:
+        return JsonResponse({"ok": False, "error": "Faltan campos (nombre_completo, correo, password)."}, status=400)
+
+    if _mysql_get_usuario_por_correo(correo):
+        return JsonResponse({"ok": False, "error": "Ese correo ya está registrado."}, status=409)
+
+    if User.objects.filter(username=correo).exists():
+        return JsonResponse({"ok": False, "error": "Ese usuario ya existe."}, status=409)
+
+    user = User.objects.create_user(username=correo, password=password, first_name=nombre_completo)
+
+    try:
+        _mysql_insert_usuario(nombre_completo, password, "adulto", correo=correo, telefono=telefono)
+    except Exception as e:
+        user.delete()
+        return JsonResponse({"ok": False, "error": f"No se pudo registrar en MySQL: {e}"}, status=500)
+
+    auth_login(request, user)
+    return JsonResponse({
+        "ok": True,
+        "user": {"username": user.username, "nombre_completo": nombre_completo, "tipo": "adulto", "correo": correo, "telefono": telefono}
+    })
+
+@csrf_exempt
+def api_v1_login(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Método no permitido"}, status=405)
+
+    data = _json_body(request)
+    correo = (data.get("correo") or data.get("username") or "").strip().lower()
+    password = data.get("password") or ""
+
+    if not correo or not password:
+        return JsonResponse({"ok": False, "error": "Faltan campos (correo/username, password)."}, status=400)
+
+    user_auth = authenticate(request, username=correo, password=password)
+    if user_auth is None:
+        return JsonResponse({"ok": False, "error": "Credenciales incorrectas."}, status=401)
+
+    auth_login(request, user_auth)
+
+    # opcional: leer tipo desde MySQL por correo
+    mysql_user = _mysql_get_usuario_por_correo(correo)
+    tipo = (mysql_user.get("tipo") if mysql_user else "desconocido")
+    nombre = (mysql_user.get("nombre_completo") if mysql_user else (user_auth.first_name or ""))
+
+    return JsonResponse({
+        "ok": True,
+        "user": {"username": correo, "nombre_completo": nombre, "tipo": tipo, "correo": correo}
+    })
+
+@login_required
+def api_v1_me(request):
+    correo = request.user.username
+    mysql_user = _mysql_get_usuario_por_correo(correo)
+    if mysql_user:
+        return JsonResponse({"ok": True, "user": mysql_user})
+    return JsonResponse({"ok": True, "user": {"username": correo, "nombre_completo": request.user.first_name or "", "tipo": "desconocido"}})
+
+@csrf_exempt
+@login_required
+def api_v1_logout(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Método no permitido"}, status=405)
+    auth_logout(request)
+    return JsonResponse({"ok": True})

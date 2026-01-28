@@ -9,7 +9,15 @@ urlpatterns = [
     # --- Autenticación ---
     path("", views.login_view, name="login"),
     path("inicio/", views.inicio, name="inicio"),
+    path('registro-cuidador/', views.registro_cuidador_view, name='registro_cuidador'),
     path("salir/", views.salir, name="salir"),
+
+    #--------flutter-----------#
+    path("api/v1/auth/register/cuidador/", views.api_v1_register_cuidador),
+    path("api/v1/auth/register/adulto/", views.api_v1_register_adulto),
+    path("api/v1/auth/login/", views.api_v1_login),
+    path("api/v1/auth/me/", views.api_v1_me),
+    path("api/v1/auth/logout/", views.api_v1_logout),
 
     # --- Órdenes de voz / OpenAI ---
     path("registrar-openai/", views.registrar_orden_openai, name="registrar_orden_openai"),

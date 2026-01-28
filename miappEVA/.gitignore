@@ -1,4 +1,7 @@
-_pycache_/
+.env
+env/
+__pycache__/
 *.pyc
 db.sqlite3
-venv/db.sqlite3
+venv/
+get-pip.py
