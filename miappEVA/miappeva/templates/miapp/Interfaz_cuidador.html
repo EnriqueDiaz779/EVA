@@ -16,76 +16,146 @@
 
 <body class="min-h-screen text-gray-900">
 
-  <!-- HEADER -->
-  <header class="fixed top-0 left-0 right-0 h-12 bg-blue-900 shadow-md z-50">
-    <div class="h-full px-3 md:px-6 flex items-center justify-between relative">
+<!-- HEADER (igual a inicio.html) -->
+<header class="fixed top-0 left-0 right-0 h-16 bg-blue-900 text-white flex items-center justify-between px-4 md:px-6 shadow-md text-2xl z-50">
+  <!-- Izquierda: Logo + EVA -->
+  <div class="flex items-center gap-3">
+    <img src="{% static 'miapp/img/eva.jpg' %}" alt="EVA Logo" class="w-12 h-12 rounded-full">
+    <span class="text-3xl font-extrabold tracking-wide">EVA</span>
+  </div>
 
-      <!-- Izquierda: Historial -->
-      <div class="relative">
-        <button
-          type="button"
-          id="btnHistorial"
-          class="inline-flex items-center justify-center h-8 px-5 rounded-full bg-yellow-400 text-blue-950 font-extrabold text-sm shadow hover:brightness-95 transition"
-        >
-          Historial
-        </button>
+  <!-- Derecha: Historial + Perfil + Salir -->
+  <div class="flex items-center gap-3 md:gap-4 relative">
+    <!-- Historial -->
+    <div class="relative">
+      <button
+        type="button"
+        id="btnHistorial"
+        class="flex items-center justify-center gap-2
+               bg-yellow-400 hover:bg-yellow-500
+               text-blue-950 font-extrabold
+               px-3 py-1 rounded-lg shadow
+               text-lg transition
+               hover:scale-105 active:scale-95
+               focus:outline-none focus:ring-2 focus:ring-yellow-200"
+      >
+        <span class="text-2xl">📜</span>
+        <span class="hidden sm:inline">Historial</span>
+      </button>
 
-        <!-- MODAL HISTORIAL (debajo del botón) -->
-        <div
-          id="modalHistorial"
-          class="hidden absolute left-0 top-10 w-44 md:w-48 bg-white shadow-lg border border-gray-200 rounded-sm"
-        >
-          <div class="h-48 flex items-center justify-center">
-            <span class="text-xs font-extrabold text-gray-700">VACÍO</span>
-          </div>
-        </div>
-      </div>
+      <!-- MODAL HISTORIAL -->
+<div
+  id="modalHistorial"
+  class="hidden absolute left-1/2 -translate-x-1/2 top-[3.25rem]
+         w-72 md:w-80 bg-white text-gray-900
+         rounded-2xl shadow-2xl border border-gray-200
+         overflow-hidden z-50"
+>
+  <!-- Flechita -->
+  <div class="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white rotate-45 border-l border-t border-gray-200"></div>
 
-      <!-- Centro: EVA -->
-      <div class="absolute left-1/2 -translate-x-1/2">
-        <span class="text-lg md:text-xl font-extrabold text-white tracking-wide">EVA</span>
-      </div>
+  <!-- Encabezado del modal -->
+  <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+    <span class="text-xl">📜</span>
+    <p class="font-extrabold text-sm tracking-wide">Historial</p>
+  </div>
 
-      <!-- Derecha: perfil + salir -->
-      <div class="flex items-center gap-3 relative">
-        <!-- PERFIL -->
-        <div class="relative">
-          <button
-            type="button"
-            id="btnPerfil"
-            class="text-white/90 hover:text-white transition"
-            aria-label="Perfil"
-            title="Perfil"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M16 14a4 4 0 10-8 0m8 0a6 6 0 11-8 0m8 0v1a3 3 0 01-3 3h-2a3 3 0 01-3-3v-1" />
-            </svg>
-          </button>
+  <!-- Contenido -->
+  <div class="p-5">
+    <!-- Estado vacío bonito -->
+    <div class="h-40 flex flex-col items-center justify-center text-center gap-2">
+      <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-2xl">🗂️</div>
+      <p class="font-extrabold text-gray-800">Aún no hay historial</p>
+      <p class="text-sm text-gray-500">Aquí aparecerán el historial de los medicamentos.</p>
+    </div>
+  </div>
+</div>
+</div>
 
-          <!-- MODAL PERFIL (debajo del icono) -->
-          <div
-            id="modalPerfil"
-            class="hidden absolute right-0 top-10 w-52 bg-white shadow-lg border border-gray-200 rounded-sm p-3"
-          >
-            <div class="text-[11px] leading-5 text-gray-900">
-              <p><span class="font-extrabold">Nombre:</span> {{ cuidador_nombre|default:"" }}</p>
-              <p class="mt-2"><span class="font-extrabold">Correo electrónico:</span> {{ cuidador_correo|default:"" }}</p>
-              <p class="mt-2"><span class="font-extrabold">Teléfono:</span> {{ cuidador_telefono|default:"" }}</p>
-            </div>
-          </div>
-        </div>
+    <!-- Perfil -->
+    <div class="relative">
+      <button
+        type="button"
+        id="btnPerfil"
+        class="flex items-center justify-center gap-2
+               bg-blue-700 hover:bg-blue-800
+               text-white font-extrabold
+               px-3 py-1 rounded-lg shadow
+               text-lg transition
+               hover:scale-105 active:scale-95
+               focus:outline-none focus:ring-2 focus:ring-blue-300"
+        aria-label="Perfil"
+        title="Perfil"
+      >
+        <span class="text-2xl">👤</span>
+        <span class="hidden sm:inline">Perfil</span>
+      </button>
 
-        <!-- Salir -->
-        <a
-          href="{% url 'salir' %}"
-          class="inline-flex items-center justify-center h-8 px-5 rounded-full bg-red-600 text-white font-extrabold text-sm shadow hover:bg-red-700 transition"
-        >
-          Salir
-        </a>
+      <!-- MODAL PERFIL -->
+<div
+  id="modalPerfil"
+  class="hidden absolute left-1/2 -translate-x-1/2 top-[3.25rem]
+         w-80 md:w-96 bg-white text-gray-900
+         rounded-2xl shadow-2xl border border-gray-200
+         overflow-hidden z-50"
+>
+  <!-- Flechita -->
+  <div class="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white rotate-45 border-l border-t border-gray-200"></div>
+
+  <!-- Encabezado -->
+  <div class="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-xl">👤</div>
+      <div class="leading-tight">
+        <p class="font-extrabold text-sm tracking-wide">Perfil del cuidador</p>
+        <p class="text-xs text-gray-500">Información de contacto</p>
       </div>
     </div>
-  </header>
+  </div>
+
+  <!-- Contenido -->
+  <div class="p-5 space-y-3">
+    <div class="flex items-start gap-3">
+      <span class="text-lg">🪪</span>
+      <p class="text-sm">
+        <span class="font-extrabold">Nombre:</span>
+        <span class="text-gray-700">{{ cuidador_nombre|default:"" }}</span>
+      </p>
+    </div>
+
+    <div class="flex items-start gap-3">
+      <span class="text-lg">📧</span>
+      <p class="text-sm break-all">
+        <span class="font-extrabold">Correo:</span>
+        <span class="text-gray-700">{{ cuidador_correo|default:"" }}</span>
+      </p>
+    </div>
+
+    <div class="flex items-start gap-3">
+      <span class="text-lg">📞</span>
+      <p class="text-sm">
+        <span class="font-extrabold">Teléfono:</span>
+        <span class="text-gray-700">{{ cuidador_telefono|default:"" }}</span>
+      </p>
+    </div>
+  </div>
+</div>
+</div>  
+
+    <!-- Salir (igual a inicio.html) -->
+    <a
+      href="{% url 'salir' %}"
+      class="bg-red-500 hover:bg-red-600
+             text-white font-bold
+             px-4 py-2 rounded-lg shadow
+             text-lg transition
+             hover:scale-105 active:scale-95
+             focus:outline-none focus:ring-2 focus:ring-red-300"
+    >
+      Salir
+    </a>
+  </div>
+</header>
 
   <!-- CUERPO (vacío grande como tu imagen) -->
   <main class="pt-12">
