@@ -171,52 +171,62 @@ def obtener_tipo_usuario(nombre_completo):
     return None
 
 #----debug: verificar usuario en BD----#
-def verificar_usuario_en_bd(nombre_completo):
-    """Verifica si un usuario existe en la BD y retorna su información"""
+def verificar_usuario_en_bd(identificador):
+    """Busca por correo (si coincide) o por Nombre_Completo"""
     try:
+        ident = (identificador or "").strip()
+        if not ident:
+            return None
+
         with connection.cursor() as cursor:
+            # 1) buscar por correo
             cursor.execute(
-                "SELECT Id_Usuario, Nombre_Completo, Tipo, correo, Telefono FROM Usuarios WHERE Nombre_Completo = %s LIMIT 1",
-                [nombre_completo]
+                "SELECT Id_Usuario, Nombre_Completo, Tipo, correo, Telefono "
+                "FROM Usuarios WHERE correo = %s LIMIT 1",
+                [ident.lower()]
             )
             row = cursor.fetchone()
             if row:
-                print(f"✅ Usuario encontrado en BD: {row}")
-                return {
-                    "id": row[0],
-                    "nombre": row[1],
-                    "tipo": row[2],
-                    "correo": row[3],
-                    "telefono": row[4]
-                }
-            else:
-                print(f"⚠️ Usuario '{nombre_completo}' NO encontrado en BD MySQL")
+                return {"id": row[0], "nombre": row[1], "tipo": row[2], "correo": row[3], "telefono": row[4]}
+
+            # 2) buscar por nombre
+            cursor.execute(
+                "SELECT Id_Usuario, Nombre_Completo, Tipo, correo, Telefono "
+                "FROM Usuarios WHERE Nombre_Completo = %s LIMIT 1",
+                [ident]
+            )
+            row = cursor.fetchone()
+            if row:
+                return {"id": row[0], "nombre": row[1], "tipo": row[2], "correo": row[3], "telefono": row[4]}
     except Exception as e:
         print(f"❌ Error verificando usuario: {e}")
     return None
-    return None
-    return None
 
 #----login en bd------#
-def registrar_login_en_db(username, request):
-    """Registra el login en una tabla de auditoría"""
+def registrar_login_en_db(identificador, request):
     try:
+        ident = (identificador or "").strip()
+
         with connection.cursor() as cursor:
-            # Primero obtener el ID del usuario por Nombre_Completo (no username)
-            cursor.execute("SELECT Id_Usuario FROM Usuarios WHERE Nombre_Completo = %s LIMIT 1", [username])
+            cursor.execute(
+                "SELECT Id_Usuario FROM Usuarios WHERE correo=%s OR Nombre_Completo=%s LIMIT 1",
+                [ident.lower(), ident]
+            )
             result = cursor.fetchone()
-            if result:
-                usuario_id = result[0]
-                ip_address = get_client_ip(request)
-                user_agent = request.META.get('HTTP_USER_AGENT', '')[:500]
-                
-                cursor.execute(
-                    "INSERT INTO registros_login (usuario_id, ip_address, fecha_entrada, user_agent, activo) VALUES (%s, %s, NOW(), %s, %s)",
-                    [usuario_id, ip_address, user_agent, True]
-                )
-                print(f"✅ Login registrado para usuario ID: {usuario_id}")
-            else:
-                print(f"⚠️ Usuario no encontrado en tabla Usuarios")
+            if not result:
+                print("⚠️ Usuario no encontrado en tabla Usuarios")
+                return
+
+            usuario_id = result[0]
+            ip_address = get_client_ip(request)
+            user_agent = request.META.get('HTTP_USER_AGENT', '')[:500]
+
+            cursor.execute(
+                "INSERT INTO registros_login (usuario_id, ip_address, fecha_entrada, user_agent, activo) "
+                "VALUES (%s, %s, NOW(), %s, %s)",
+                [usuario_id, ip_address, user_agent, True]
+            )
+            print(f"✅ Login registrado para usuario ID: {usuario_id}")
     except Exception as e:
         print(f"❌ Error al registrar login en DB: {e}")
 
@@ -240,8 +250,69 @@ def inicio(request):
 #-----interfaz_cuidador----#
 @login_required
 def interfaz_cuidador(request):
-    nombre = request.user.first_name or request.user.username
-    return render(request, 'miapp/Interfaz_cuidador.html', {"nombre": nombre})
+    ident = (request.user.username or "").strip()  # puede ser correo o nombre
+
+    # Busca por correo o por Nombre_Completo
+    mysql_user = verificar_usuario_en_bd(ident)  # (si ya la modificaste para buscar ambos)
+    # Si NO la modificaste, usa la función nueva: _mysql_get_usuario_por_identificador(ident)
+
+    nombre = ""
+    correo = ""
+    telefono = ""
+
+    if mysql_user:
+        nombre = mysql_user.get("nombre") or mysql_user.get("nombre_completo") or ""
+        correo = (mysql_user.get("correo") or "").strip()
+        telefono = (mysql_user.get("telefono") or "").strip()
+    else:
+        # fallback Django
+        nombre = request.user.first_name or ""
+        correo = request.user.username or ""
+
+    return render(request, "miapp/Interfaz_cuidador.html", {
+        "cuidador_nombre": nombre,
+        "cuidador_correo": correo,
+        "cuidador_telefono": telefono,
+    })
+
+#----MYSQL IDENTIFICADOR------#
+def _mysql_get_usuario_por_identificador(identificador: str):
+    """
+    Busca al usuario por correo (si parece correo) o por Nombre_Completo.
+    Regresa: {id, nombre_completo, tipo, correo, telefono}
+    """
+    ident = (identificador or "").strip()
+    if not ident:
+        return None
+
+    with connection.cursor() as cursor:
+        # 1) Intentar por correo exacto (si el usuario escribió correo)
+        cursor.execute(
+            "SELECT Id_Usuario, Nombre_Completo, Tipo, correo, Telefono "
+            "FROM Usuarios WHERE correo=%s LIMIT 1",
+            [ident.lower()]
+        )
+        row = cursor.fetchone()
+        if row:
+            return {
+                "id": row[0], "nombre_completo": row[1], "tipo": row[2],
+                "correo": row[3], "telefono": row[4]
+            }
+
+        # 2) Intentar por nombre completo
+        cursor.execute(
+            "SELECT Id_Usuario, Nombre_Completo, Tipo, correo, Telefono "
+            "FROM Usuarios WHERE Nombre_Completo=%s LIMIT 1",
+            [ident]
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        return {
+            "id": row[0], "nombre_completo": row[1], "tipo": row[2],
+            "correo": row[3], "telefono": row[4]
+        }
 
 #------salida----#
 @login_required

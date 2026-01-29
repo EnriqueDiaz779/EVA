@@ -6,37 +6,134 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EVA - Panel Cuidador</title>
 
-  <!-- TailwindCSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- Fuente Poppins -->
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
 
   <style>
-    body {
-      font-family: 'Poppins', sans-serif;
-      background-color: #FFF8E1;
-    }
+    body { font-family: 'Poppins', sans-serif; background-color: #e9e2e2; } /* como tu mockup */
   </style>
 </head>
 
-<body class="min-h-screen flex flex-col items-center justify-center text-gray-900">
+<body class="min-h-screen text-gray-900">
 
-  <header class="fixed top-0 left-0 right-0 h-12 bg-blue-900 flex items-center justify-center shadow-md z-10">
-    <span class="text-xl md:text-2xl font-extrabold text-white tracking-wide">EVA</span>
+  <!-- HEADER -->
+  <header class="fixed top-0 left-0 right-0 h-12 bg-blue-900 shadow-md z-50">
+    <div class="h-full px-3 md:px-6 flex items-center justify-between relative">
+
+      <!-- Izquierda: Historial -->
+      <div class="relative">
+        <button
+          type="button"
+          id="btnHistorial"
+          class="inline-flex items-center justify-center h-8 px-5 rounded-full bg-yellow-400 text-blue-950 font-extrabold text-sm shadow hover:brightness-95 transition"
+        >
+          Historial
+        </button>
+
+        <!-- MODAL HISTORIAL (debajo del botón) -->
+        <div
+          id="modalHistorial"
+          class="hidden absolute left-0 top-10 w-44 md:w-48 bg-white shadow-lg border border-gray-200 rounded-sm"
+        >
+          <div class="h-48 flex items-center justify-center">
+            <span class="text-xs font-extrabold text-gray-700">VACÍO</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Centro: EVA -->
+      <div class="absolute left-1/2 -translate-x-1/2">
+        <span class="text-lg md:text-xl font-extrabold text-white tracking-wide">EVA</span>
+      </div>
+
+      <!-- Derecha: perfil + salir -->
+      <div class="flex items-center gap-3 relative">
+        <!-- PERFIL -->
+        <div class="relative">
+          <button
+            type="button"
+            id="btnPerfil"
+            class="text-white/90 hover:text-white transition"
+            aria-label="Perfil"
+            title="Perfil"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M16 14a4 4 0 10-8 0m8 0a6 6 0 11-8 0m8 0v1a3 3 0 01-3 3h-2a3 3 0 01-3-3v-1" />
+            </svg>
+          </button>
+
+          <!-- MODAL PERFIL (debajo del icono) -->
+          <div
+            id="modalPerfil"
+            class="hidden absolute right-0 top-10 w-52 bg-white shadow-lg border border-gray-200 rounded-sm p-3"
+          >
+            <div class="text-[11px] leading-5 text-gray-900">
+              <p><span class="font-extrabold">Nombre:</span> {{ cuidador_nombre|default:"" }}</p>
+              <p class="mt-2"><span class="font-extrabold">Correo electrónico:</span> {{ cuidador_correo|default:"" }}</p>
+              <p class="mt-2"><span class="font-extrabold">Teléfono:</span> {{ cuidador_telefono|default:"" }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Salir -->
+        <a
+          href="{% url 'salir' %}"
+          class="inline-flex items-center justify-center h-8 px-5 rounded-full bg-red-600 text-white font-extrabold text-sm shadow hover:bg-red-700 transition"
+        >
+          Salir
+        </a>
+      </div>
+    </div>
   </header>
 
-  <main class="text-center">
-    <h1 class="text-5xl md:text-6xl font-extrabold text-gray-900">
-      Panel de Cuidador 👋
-    </h1>
-    
-    <a href="{% url 'salir' %}" class="mt-8 inline-block bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-xl transition">
-      Salir
-    </a>
+  <!-- CUERPO (vacío grande como tu imagen) -->
+  <main class="pt-12">
+    <div class="min-h-[calc(100vh-64px)]"></div>
   </main>
 
+  <!-- FOOTER -->
   <footer class="fixed bottom-0 left-0 right-0 h-4 bg-blue-900"></footer>
+
+  <!-- JS: abre/cierra modales y cierra al hacer clic fuera -->
+  <script>
+    const btnHistorial = document.getElementById("btnHistorial");
+    const modalHistorial = document.getElementById("modalHistorial");
+
+    const btnPerfil = document.getElementById("btnPerfil");
+    const modalPerfil = document.getElementById("modalPerfil");
+
+    function cerrarTodos() {
+      modalHistorial.classList.add("hidden");
+      modalPerfil.classList.add("hidden");
+    }
+
+    btnHistorial.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const estabaAbierto = !modalHistorial.classList.contains("hidden");
+      cerrarTodos();
+      if (!estabaAbierto) modalHistorial.classList.remove("hidden");
+    });
+
+    btnPerfil.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const estabaAbierto = !modalPerfil.classList.contains("hidden");
+      cerrarTodos();
+      if (!estabaAbierto) modalPerfil.classList.remove("hidden");
+    });
+
+    // Evitar que al hacer click dentro del modal se cierre
+    modalHistorial.addEventListener("click", (e) => e.stopPropagation());
+    modalPerfil.addEventListener("click", (e) => e.stopPropagation());
+
+    // Click fuera cierra todo
+    document.addEventListener("click", () => cerrarTodos());
+
+    // Escape cierra todo
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") cerrarTodos();
+    });
+  </script>
 
 </body>
 </html>
