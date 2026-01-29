@@ -5,3 +5,7 @@ __pycache__/
 db.sqlite3
 venv/
 get-pip.py
+
+# Logs
+server.log
+*.log

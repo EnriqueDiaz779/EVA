@@ -10,7 +10,9 @@ urlpatterns = [
     path("", views.login_view, name="login"),
     path("inicio/", views.inicio, name="inicio"),
     path('registro-cuidador/', views.registro_cuidador_view, name='registro_cuidador'),
+    path('interfaz-cuidador/', views.interfaz_cuidador, name='interfaz_cuidador'),
     path("salir/", views.salir, name="salir"),
+    path("procesar-pago/", views.procesar_pago, name="procesar_pago"),
 
     #--------flutter-----------#
     path("api/v1/auth/register/cuidador/", views.api_v1_register_cuidador),

@@ -1,4 +1,4 @@
-{% load static %}
+{% load static %} 
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -57,7 +57,7 @@
       🧑‍⚕️ Regístrate para administrar y ayudar al adulto mayor.
     </p>
 
-    <form method="post" action="" class="text-left mx-auto max-w-xl">
+    <form method="post" action="" id="formRegistro" class="text-left mx-auto max-w-xl">
       {% csrf_token %}
 
       <!-- Nombre completo -->
@@ -66,8 +66,7 @@
         <input type="text" name="nombre_completo" id="nombre_completo" placeholder="Nombre completo"
           class="w-full pl-14 pr-4 py-4 md:py-5 border-2 border-gray-300 rounded-2xl text-xl md:text-2xl
                  focus:ring-4 focus:ring-blue-300 focus:outline-none"
-          required
-          onfocus="hablar" />
+          required />
       </div>
 
       <!-- Contraseña -->
@@ -76,8 +75,7 @@
         <input type="password" name="password" id="password" placeholder="Contraseña"
           class="w-full pl-14 pr-4 py-4 md:py-5 border-2 border-gray-300 rounded-2xl text-xl md:text-2xl
                  focus:ring-4 focus:ring-blue-300 focus:outline-none"
-          required
-          onfocus="hablar" />
+          required />
       </div>
 
       <!-- Correo -->
@@ -86,8 +84,7 @@
         <input type="email" name="correo" id="correo" placeholder="Correo"
           class="w-full pl-14 pr-4 py-4 md:py-5 border-2 border-gray-300 rounded-2xl text-xl md:text-2xl
                  focus:ring-4 focus:ring-blue-300 focus:outline-none"
-          required
-          onfocus="hablar" />
+          required />
       </div>
 
       <!-- Teléfono -->
@@ -95,25 +92,24 @@
         <span class="input-icon">📞</span>
         <input type="text" name="telefono" id="telefono" placeholder="Teléfono"
           class="w-full pl-14 pr-4 py-4 md:py-5 border-2 border-gray-300 rounded-2xl text-xl md:text-2xl
-                 focus:ring-4 focus:ring-blue-300 focus:outline-none"
-          onfocus="hablar"/>
+                 focus:ring-4 focus:ring-blue-300 focus:outline-none" />
       </div>
 
       <button
-  type="button"
-  id="btnAbrirPago"
-  class="w-full bg-[#16A34A] hover:bg-[#22C55E] text-white text-2xl md:text-3xl font-bold
-         py-4 md:py-5 rounded-2xl shadow-lg transition-transform transform hover:scale-[1.02]
-         active:scale-95 focus:outline-none focus:ring-4 focus:ring-green-300 tracking-wide"
-  onclick="abrirModalPago()">
-  Continuar a pago
-</button>
+        type="button"
+        id="btnAbrirPago"
+        disabled
+        class="w-full bg-[#16A34A] hover:bg-[#22C55E] disabled:bg-gray-400 disabled:cursor-not-allowed disabled:hover:bg-gray-400 text-white text-2xl md:text-3xl font-bold
+               py-4 md:py-5 rounded-2xl shadow-lg transition-transform transform hover:scale-[1.02] disabled:hover:scale-100
+               active:scale-95 focus:outline-none focus:ring-4 focus:ring-green-300 tracking-wide"
+        onclick="abrirModalPago()">
+        Continuar a pago
+      </button>
 
       <!-- Link para regresar al login -->
       <div class="mt-6 text-center">
         <a href="{% url 'login' %}"
-           class="text-lg md:text-xl font-semibold text-blue-900 hover:underline"
-           onclick="hablar">
+           class="text-lg md:text-xl font-semibold text-blue-900 hover:underline">
           Ya tengo cuenta, volver al login
         </a>
       </div>
@@ -121,6 +117,105 @@
   </main>
 
   <footer class="fixed bottom-0 left-0 right-0 h-4 bg-blue-900"></footer>
+
+  <!-- ===================== MODAL PAGO ===================== -->
+  <div id="modalPago" class="fixed inset-0 z-50 hidden">
+    <!-- Overlay -->
+    <div class="absolute inset-0 bg-black/50" onclick="cerrarModalPago()"></div>
+
+    <!-- Contenedor centrado -->
+    <div class="relative min-h-screen flex items-center justify-center p-4">
+      <!-- “Marco” azul arriba/abajo (como tu imagen) -->
+      <div class="absolute top-0 left-0 right-0 h-10 bg-blue-900/70"></div>
+      <div class="absolute bottom-0 left-0 right-0 h-10 bg-blue-900/70"></div>
+
+      <!-- Card del modal -->
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tituloPago"
+        class="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-gray-200 px-6 py-7 md:px-8 md:py-8"
+        onclick="event.stopPropagation()"
+      >
+        <!-- Cerrar -->
+        <button
+          type="button"
+          class="absolute top-4 right-4 w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-2xl flex items-center justify-center"
+          onclick="cerrarModalPago()"
+          aria-label="Cerrar"
+        >
+          ×
+        </button>
+
+        <h2 id="tituloPago" class="text-center text-xl md:text-2xl font-extrabold text-gray-900">
+          suscripcion anual
+        </h2>
+
+        <!-- Icono (puedes cambiar la imagen si quieres) -->
+        <div class="flex justify-center my-4">
+          <img src="{% static 'miapp/img/eva.jpg' %}" alt="EVA"
+               class="w-14 h-14 rounded-full shadow" />
+        </div>
+
+        <p class="text-center text-gray-700 text-lg">monto de pago</p>
+        <p class="text-center text-4xl md:text-5xl font-extrabold text-gray-900 mt-1 mb-6">$100</p>
+
+        <!-- Formulario tarjeta -->
+        <form id="formPago" class="space-y-4">
+          <input
+            type="text"
+            id="cardNumber"
+            placeholder="Número de tarjeta:"
+            inputmode="numeric"
+            maxlength="19"
+            class="w-full rounded-2xl border border-gray-300 px-5 py-4 text-lg focus:outline-none focus:ring-4 focus:ring-blue-300"
+          />
+
+          <input
+            type="text"
+            id="cardName"
+            placeholder="Nombre completo:"
+            class="w-full rounded-2xl border border-gray-300 px-5 py-4 text-lg focus:outline-none focus:ring-4 focus:ring-blue-300"
+          />
+
+          <div class="grid grid-cols-2 gap-3">
+            <input
+              type="text"
+              id="cardExp"
+              placeholder="Vencimiento:"
+              inputmode="numeric"
+              maxlength="5"
+              class="w-full rounded-2xl border border-gray-300 px-5 py-4 text-lg focus:outline-none focus:ring-4 focus:ring-blue-300"
+            />
+
+            <input
+              type="password"
+              id="cardCvv"
+              placeholder="Código (CVV):"
+              inputmode="numeric"
+              maxlength="4"
+              class="w-full rounded-2xl border border-gray-300 px-5 py-4 text-lg focus:outline-none focus:ring-4 focus:ring-blue-300"
+            />
+          </div>
+
+          <button
+            type="submit"
+            id="btnPagar"
+            disabled
+            class="w-full mt-2 bg-blue-700 hover:bg-blue-800 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:hover:bg-gray-400 text-white text-xl md:text-2xl font-bold
+                   py-4 rounded-2xl shadow-lg active:scale-95 disabled:active:scale-100 transition"
+          >
+            Pagar
+          </button>
+
+          <p class="text-center text-sm text-gray-500 mt-2">
+            *Pago simulado (solo para demo).
+          </p>
+        </form>
+      </div>
+    </div>
+  </div>
+  <!-- =================== FIN MODAL PAGO =================== -->
 
   <script>
     function hablar(texto) {
@@ -135,7 +230,141 @@
     window.addEventListener('load', () => {
       const msgError = document.querySelector('#mensajes-visibles .bg-red-100');
       if (msgError) hablar(msgError.innerText);
+      
+      // Validar formulario en tiempo real
+      validarFormulario();
     });
+    
+    // Función para validar que todos los campos requeridos estén completos
+    function validarFormulario() {
+      const nombre = document.getElementById('nombre_completo').value.trim();
+      const password = document.getElementById('password').value.trim();
+      const correo = document.getElementById('correo').value.trim();
+      const telefono = document.getElementById('telefono').value.trim();
+      const btn = document.getElementById('btnAbrirPago');
+      
+      const todosCompletos = nombre && password && correo && telefono;
+      
+      if (todosCompletos) {
+        btn.disabled = false;
+      } else {
+        btn.disabled = true;
+      }
+    }
+    
+    // Agregar eventos de validación a los campos
+    document.getElementById('nombre_completo').addEventListener('input', validarFormulario);
+    document.getElementById('password').addEventListener('input', validarFormulario);
+    document.getElementById('correo').addEventListener('input', validarFormulario);
+    document.getElementById('telefono').addEventListener('input', validarFormulario);
+
+    // ---- Modal ----
+    function abrirModalPago() {
+      const modal = document.getElementById("modalPago");
+      modal.classList.remove("hidden");
+      document.body.classList.add("overflow-hidden");
+
+      // Focus en primer input
+      setTimeout(() => document.getElementById("cardNumber")?.focus(), 50);
+    }
+
+    function cerrarModalPago() {
+      const modal = document.getElementById("modalPago");
+      modal.classList.add("hidden");
+      document.body.classList.remove("overflow-hidden");
+    }
+
+    // Cerrar con ESC
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") cerrarModalPago();
+    });
+
+    // ---- Formato básico (solo UI) ----
+    const cardNumber = document.getElementById("cardNumber");
+    const cardExp = document.getElementById("cardExp");
+    const cardCvv = document.getElementById("cardCvv");
+
+    // 0000 0000 0000 0000
+    cardNumber?.addEventListener("input", (e) => {
+      let v = e.target.value.replace(/\D/g, "").slice(0, 16);
+      v = v.replace(/(.{4})/g, "$1 ").trim();
+      e.target.value = v;
+    });
+
+    // MM/YY
+    cardExp?.addEventListener("input", (e) => {
+      let v = e.target.value.replace(/\D/g, "").slice(0, 4);
+      if (v.length >= 3) v = v.slice(0, 2) + "/" + v.slice(2);
+      e.target.value = v;
+    });
+
+    // CVV 3-4
+    cardCvv?.addEventListener("input", (e) => {
+      e.target.value = e.target.value.replace(/\D/g, "").slice(0, 4);
+    });
+
+    // Submit del formulario de pago
+    document.getElementById("formPago")?.addEventListener("submit", (e) => {
+      e.preventDefault();
+
+      // Validación mínima rápida
+      const num = (cardNumber.value || "").replace(/\s/g, "");
+      const name = document.getElementById("cardName").value.trim();
+      const exp = cardExp.value.trim();
+      const cvv = cardCvv.value.trim();
+
+      if (num.length < 16 || !name || exp.length < 5 || cvv.length < 3) {
+        alert("Por favor completa los datos de la tarjeta.");
+        return;
+      }
+
+      // Primero procesar el pago (sin guardar datos sensibles)
+      // Obtener los datos del formulario de registro
+      const nombre = document.getElementById('nombre_completo').value.trim();
+      const password = document.getElementById('password').value.trim();
+      const correo = document.getElementById('correo').value.trim();
+      const telefono = document.getElementById('telefono').value.trim();
+
+      // Enviar el formulario de registro con el campo pago_completado
+      const form = document.querySelector('form[method="post"]');
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'pago_completado';
+      input.value = 'true';
+      form.appendChild(input);
+      
+      // Limpiar datos sensibles de tarjeta del formulario
+      cardNumber.value = '';
+      document.getElementById('cardName').value = '';
+      cardExp.value = '';
+      cardCvv.value = '';
+      
+      // Enviar el formulario
+      form.submit();
+    });
+    
+    // Validar modal en tiempo real
+    function validarModalPago() {
+      const num = (cardNumber.value || "").replace(/\s/g, "");
+      const name = document.getElementById("cardName").value.trim();
+      const exp = cardExp.value.trim();
+      const cvv = cardCvv.value.trim();
+      const btn = document.getElementById('btnPagar');
+      
+      const todosCompletos = num.length >= 16 && name && exp.length >= 5 && cvv.length >= 3;
+      
+      if (todosCompletos) {
+        btn.disabled = false;
+      } else {
+        btn.disabled = true;
+      }
+    }
+    
+    // Agregar eventos de validación al modal
+    cardNumber?.addEventListener('input', validarModalPago);
+    document.getElementById('cardName').addEventListener('input', validarModalPago);
+    cardExp?.addEventListener('input', validarModalPago);
+    cardCvv?.addEventListener('input', validarModalPago);
   </script>
 
 </body>

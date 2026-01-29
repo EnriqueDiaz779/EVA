@@ -7,6 +7,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.db import connection
+from django.contrib.auth.hashers import make_password
 from .models import OrdenVoz, Alarma, PatronVoz, CapturaTemporal
 from .openai_client import preguntar_openai
 from datetime import date
@@ -55,23 +56,73 @@ def login_view(request):
         return render(request, 'miapp/login.html', {"previous_username": nombre_original})
 
     username = nombre_original.lower()
+    
+    # PRIMERO: Verificar si existe en MySQL
+    usuario_mysql = verificar_usuario_en_bd(nombre_original)
+    print(f"🔍 Búsqueda en MySQL para: {nombre_original}")
+    
+    # CASO 1: Usuario existe en MySQL
+    if usuario_mysql:
+        print(f"✅ Usuario encontrado en MySQL con tipo: {usuario_mysql['tipo']}")
+        # Intentar crear o actualizar en Django si no existe
+        user = User.objects.filter(username=username).first()
+        
+        if user is None:
+            print(f"⚠️ Usuario existe en MySQL pero no en Django, creando en Django...")
+            # Crear en Django con los datos de MySQL
+            user = User.objects.create_user(
+                username=username, 
+                password=password, 
+                first_name=usuario_mysql['nombre']
+            )
+        
+        # Verificar contraseña
+        user_auth = authenticate(request, username=username, password=password)
+        if user_auth is None:
+            print(f"❌ Contraseña incorrecta para: {nombre_original}")
+            messages.error(request, "Contraseña incorrecta.")
+            return render(request, 'miapp/login.html', {"previous_username": nombre_original})
+        
+        # Login exitoso
+        auth_login(request, user_auth)
+        registrar_login_en_db(username, request)
+        messages.success(request, "Bienvenido de nuevo.")
+        
+        # Redirigir según tipo en MySQL
+        if usuario_mysql['tipo'] == "cuidador":
+            print(f"🎯 Redirigiendo cuidador a interfaz_cuidador")
+            return redirect('interfaz_cuidador')
+        else:
+            print(f"🎯 Redirigiendo adulto a inicio")
+            return redirect('inicio')
+    
+    # CASO 2: Usuario NO existe en MySQL
+    print(f"❌ Usuario NOT encontrado en MySQL: {nombre_original}")
+    
     user = User.objects.filter(username=username).first()
-
+    
     if user is None:
+        print(f"👤 Usuario NUEVO: creando como adulto")
+        # Crear usuario en Django
         user = User.objects.create_user(username=username, password=password, first_name=nombre_original)
-        # 📋 Insertar en tabla Usuarios de la base de datos
-        registrar_usuario_en_db(nombre_original, password, "adulto")
+        # Guardar como "adulto" en MySQL
+        adulto_id = registrar_usuario_en_db(nombre_original, password, "adulto")
+        if adulto_id is None:
+            user.delete()
+            messages.error(request, "Error al registrar el usuario en la base de datos.")
+            return render(request, 'miapp/login.html', {"previous_username": nombre_original})
         auth_login(request, user)
-        messages.success(request, "Bienvenido, hemos creado tu acceso.")
+        messages.success(request, "Bienvenido, hemos creado tu acceso como adulto.")
         return redirect('inicio')
-
+    
+    # Usuario existe en Django pero no en MySQL (inconsistencia)
+    print(f"⚠️ Usuario en Django pero no en MySQL: {nombre_original}")
     user_auth = authenticate(request, username=username, password=password)
     if user_auth is None:
-        messages.error(request, "Ese nombre ya está registrado, pero la contraseña no coincide.")
+        messages.error(request, "Contraseña incorrecta.")
         return render(request, 'miapp/login.html', {"previous_username": nombre_original})
-
+    
     auth_login(request, user_auth)
-    # 📋 Registrar el login en la tabla registros_login
     registrar_login_en_db(username, request)
     messages.success(request, "Bienvenido de nuevo.")
     return redirect('inicio')
@@ -79,7 +130,6 @@ def login_view(request):
 #----usuarios en bd------#
 def registrar_usuario_en_db(nombre_completo, password, tipo="adulto"):
     """Registra un nuevo usuario en la tabla Usuarios"""
-    from django.contrib.auth.hashers import make_password
     try:
         password_hash = make_password(password)
         with connection.cursor() as cursor:
@@ -87,9 +137,64 @@ def registrar_usuario_en_db(nombre_completo, password, tipo="adulto"):
                 "INSERT INTO Usuarios (Nombre_Completo, password_hash, Tipo, activo) VALUES (%s, %s, %s, %s)",
                 [nombre_completo, password_hash, tipo, True]
             )
-        print(f"✅ Usuario '{nombre_completo}' registrado en tabla Usuarios")
+            # Obtener el ID del usuario insertado
+            cursor.execute("SELECT LAST_INSERT_ID()")
+            usuario_id = cursor.fetchone()[0]
+        # Hacer commit a la base de datos
+        connection.commit()
+        print(f"✅ Usuario '{nombre_completo}' registrado en tabla Usuarios con tipo '{tipo}' (ID: {usuario_id})")
+        return usuario_id
     except Exception as e:
+        connection.rollback()
         print(f"❌ Error al registrar usuario en DB: {e}")
+        return None
+
+#----obtener tipo de usuario----#
+def obtener_tipo_usuario(nombre_completo):
+    """Obtiene el tipo de usuario (adulto o cuidador) de la BD"""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT Tipo FROM Usuarios WHERE Nombre_Completo = %s LIMIT 1",
+                [nombre_completo]
+            )
+            row = cursor.fetchone()
+            if row:
+                tipo = row[0]
+                print(f"✅ Tipo de usuario '{nombre_completo}' obtenido: {tipo}")
+                return tipo
+            else:
+                print(f"⚠️ Usuario '{nombre_completo}' no encontrado en BD")
+    except Exception as e:
+        print(f"❌ Error al obtener tipo de usuario: {e}")
+    return None
+
+#----debug: verificar usuario en BD----#
+def verificar_usuario_en_bd(nombre_completo):
+    """Verifica si un usuario existe en la BD y retorna su información"""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT Id_Usuario, Nombre_Completo, Tipo, correo, Telefono FROM Usuarios WHERE Nombre_Completo = %s LIMIT 1",
+                [nombre_completo]
+            )
+            row = cursor.fetchone()
+            if row:
+                print(f"✅ Usuario encontrado en BD: {row}")
+                return {
+                    "id": row[0],
+                    "nombre": row[1],
+                    "tipo": row[2],
+                    "correo": row[3],
+                    "telefono": row[4]
+                }
+            else:
+                print(f"⚠️ Usuario '{nombre_completo}' NO encontrado en BD MySQL")
+    except Exception as e:
+        print(f"❌ Error verificando usuario: {e}")
+    return None
+    return None
+    return None
 
 #----login en bd------#
 def registrar_login_en_db(username, request):
@@ -131,6 +236,12 @@ def inicio(request):
     ultimas = OrdenVoz.objects.filter(usuario=request.user)[:5]
     return render(request, 'miapp/inicio.html', {"nombre": nombre, "ultimas": ultimas})
 
+#-----interfaz_cuidador----#
+@login_required
+def interfaz_cuidador(request):
+    nombre = request.user.first_name or request.user.username
+    return render(request, 'miapp/Interfaz_cuidador.html', {"nombre": nombre})
+
 #------salida----#
 @login_required
 def salir(request):
@@ -149,36 +260,48 @@ def registro_cuidador_view(request):
     password = request.POST.get("password") or ""
     correo = (request.POST.get("correo") or "").strip().lower()
     telefono = (request.POST.get("telefono") or "").strip()
+    pago_completado = request.POST.get("pago_completado") == "true"
 
     if not nombre_completo or not password or not correo:
         messages.error(request, "Faltan campos: nombre completo, correo y contraseña.")
         return render(request, "miapp/registro_cuidador.html")
 
-    # Reusa la MISMA lógica del API (sin duplicar)
-    # OJO: Aquí NO llamamos HTTP, llamamos funciones directas
+    # Validar que el pago fue completado
+    if not pago_completado:
+        messages.error(request, "Debes completar el pago para registrarte.")
+        return render(request, "miapp/registro_cuidador.html")
+
+    # Validar en ambas bases de datos
     if _mysql_get_usuario_por_correo(correo):
         messages.error(request, "Ese correo ya está registrado.")
         return render(request, "miapp/registro_cuidador.html")
 
-    if User.objects.filter(username=correo).exists():
-        messages.error(request, "Ese usuario ya existe.")
-        return render(request, "miapp/registro_cuidador.html")
+    django_user = User.objects.filter(username=correo).first()
+    if django_user:
+        # Si existe en Django pero no en MySQL, eliminarlo y continuar
+        django_user.delete()
 
     # Crear en Django
     user = User.objects.create_user(username=correo, password=password, first_name=nombre_completo)
 
-    # Insertar en MySQL
+    # Insertar en MySQL y obtener el ID
     try:
-        _mysql_insert_usuario(nombre_completo, password, "cuidador", correo=correo, telefono=telefono)
+        cuidador_id = _mysql_insert_usuario(nombre_completo, password, "cuidador", correo=correo, telefono=telefono)
     except Exception as e:
         user.delete()
         messages.error(request, f"No se pudo registrar en MySQL: {e}")
         return render(request, "miapp/registro_cuidador.html")
 
-    # Iniciar sesión y mandar a inicio
+    # Guardar la membresía
+    try:
+        guardar_membresia(cuidador_id)
+    except Exception as e:
+        print(f"⚠️ Advertencia al guardar membresía: {e}")
+
+    # Iniciar sesión y mandar a interfaz_cuidador
     auth_login(request, user)
     messages.success(request, "Cuidador registrado correctamente.")
-    return redirect("inicio")
+    return redirect("interfaz_cuidador")
 
 #---- OPENAI – Órdenes de voz -----#
 @login_required
@@ -890,6 +1013,57 @@ def _mysql_insert_usuario(nombre_completo, password, tipo, correo=None, telefono
             """,
             [nombre_completo, password_hash, tipo, correo or None, telefono or None, True]
         )
+        # Obtener el ID del usuario insertado
+        cursor.execute("SELECT LAST_INSERT_ID()")
+        usuario_id = cursor.fetchone()[0]
+    # Hacer commit a la base de datos
+    connection.commit()
+    return usuario_id
+
+#----guardar membresía----#
+def guardar_membresia(cuidador_id):
+    """Guarda la membresía del cuidador en la BD"""
+    try:
+        fecha_pago = date.today()
+        # Fecha de renovación: 1 año desde hoy
+        fecha_renovacion = fecha_pago + timedelta(days=365)
+        
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO membresia (fecha_pago, fecha_renovacion, estado, cuidador_id)
+                VALUES (%s, %s, %s, %s)
+                """,
+                [fecha_pago, fecha_renovacion, 'activa', cuidador_id]
+            )
+        # Hacer commit a la base de datos
+        connection.commit()
+        print(f"✅ Membresía guardada para cuidador ID: {cuidador_id}")
+        return True
+    except Exception as e:
+        connection.rollback()
+        print(f"❌ Error al guardar membresía: {e}")
+        return False
+
+#----procesar pago----#
+@require_POST
+@csrf_exempt
+def procesar_pago(request):
+    """Procesa el pago y guarda la membresía"""
+    try:
+        data = json.loads(request.body)
+        cuidador_id = data.get('cuidador_id')
+        
+        if not cuidador_id:
+            return JsonResponse({'error': 'ID de cuidador no proporcionado'}, status=400)
+        
+        # Guardar la membresía (sin guardar datos sensibles de tarjeta)
+        if guardar_membresia(cuidador_id):
+            return JsonResponse({'success': True, 'message': 'Pago procesado exitosamente'})
+        else:
+            return JsonResponse({'error': 'Error al procesar el pago'}, status=500)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
 def _mysql_get_usuario_por_correo(correo):
     if not correo:
