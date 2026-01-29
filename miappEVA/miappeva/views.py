@@ -87,7 +87,6 @@ def login_view(request):
         # Login exitoso
         auth_login(request, user_auth)
         registrar_login_en_db(username, request)
-        #####################################################################
         
         # Redirigir según tipo en MySQL
         if usuario_mysql['tipo'] == "cuidador":
