@@ -13,7 +13,7 @@
   <style>
     body {
       font-family: 'Poppins', sans-serif;
-      background-color: #FFF8E1;
+      background-color: #E4E4E4;
     }
     .input-icon {
       position: absolute;
@@ -49,6 +49,10 @@
         {% for message in messages %}
           {% if message.tags == 'error' %}
             <div class="px-5 py-4 rounded-2xl text-lg md:text-xl bg-red-100 text-red-800 border border-red-300">
+              {{ message }}
+            </div>
+          {% elif message.tags == 'success' %}
+            <div id="mensaje-exito" class="px-5 py-4 rounded-2xl text-lg md:text-xl bg-green-100 text-green-800 border border-green-300">
               {{ message }}
             </div>
           {% endif %}
@@ -136,6 +140,18 @@
         }, 800);
       }
     });
+
+    // ⏱ Ocultar mensaje de éxito automáticamente
+    setTimeout(() => {
+      const msg = document.getElementById('mensaje-exito');
+      if (msg) {
+        msg.classList.add('opacity-0');
+        msg.classList.add('transition');
+        msg.classList.add('duration-500');
+        setTimeout(() => msg.remove(), 600);
+      }
+    }, 3000);
+
   </script>
 
 </body>

@@ -1,3 +1,4 @@
+from urllib import request
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.contrib.auth.decorators import login_required
@@ -86,7 +87,7 @@ def login_view(request):
         # Login exitoso
         auth_login(request, user_auth)
         registrar_login_en_db(username, request)
-        messages.success(request, "Bienvenido de nuevo.")
+        #####################################################################
         
         # Redirigir según tipo en MySQL
         if usuario_mysql['tipo'] == "cuidador":
@@ -124,7 +125,7 @@ def login_view(request):
     
     auth_login(request, user_auth)
     registrar_login_en_db(username, request)
-    messages.success(request, "Bienvenido de nuevo.")
+    #####################################################################
     return redirect('inicio')
 
 #----usuarios en bd------#
@@ -298,10 +299,11 @@ def registro_cuidador_view(request):
     except Exception as e:
         print(f"⚠️ Advertencia al guardar membresía: {e}")
 
-    # Iniciar sesión y mandar a interfaz_cuidador
-    auth_login(request, user)
-    messages.success(request, "Cuidador registrado correctamente.")
-    return redirect("interfaz_cuidador")
+    # NO iniciar sesión aquí
+    # Mandar a login con mensaje corto
+    messages.success(request, "✅ Pago realizado con éxito. Ahora inicia sesión.")
+    return redirect("login")
+
 
 #---- OPENAI – Órdenes de voz -----#
 @login_required

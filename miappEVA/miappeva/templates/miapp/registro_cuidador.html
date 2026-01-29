@@ -12,7 +12,7 @@
   <style>
     body {
       font-family: 'Poppins', sans-serif;
-      background-color: #FFF8E1;
+      background-color: #E4E4E4;
     }
     .input-icon {
       position: absolute;
@@ -125,10 +125,7 @@
 
     <!-- Contenedor centrado -->
     <div class="relative min-h-screen flex items-center justify-center p-4">
-      <!-- “Marco” azul arriba/abajo (como tu imagen) -->
-      <div class="absolute top-0 left-0 right-0 h-10 bg-blue-900/70"></div>
-      <div class="absolute bottom-0 left-0 right-0 h-10 bg-blue-900/70"></div>
-
+      
       <!-- Card del modal -->
       <div
         role="dialog"
@@ -147,17 +144,17 @@
           ×
         </button>
 
-        <h2 id="tituloPago" class="text-center text-xl md:text-2xl font-extrabold text-gray-900">
-          suscripcion anual
+        <h2 id="tituloPago" class="text-center text-2xl md:text-2xl font-extrabold text-gray-900">
+          Suscripcion anual
         </h2>
 
         <!-- Icono (puedes cambiar la imagen si quieres) -->
         <div class="flex justify-center my-4">
           <img src="{% static 'miapp/img/eva.jpg' %}" alt="EVA"
-               class="w-14 h-14 rounded-full shadow" />
+               class="w-40 h-40 rounded-full shadow" />
         </div>
 
-        <p class="text-center text-gray-700 text-lg">monto de pago</p>
+        <p class="text-center text-gray-700 text-xl">monto de pago</p>
         <p class="text-center text-4xl md:text-5xl font-extrabold text-gray-900 mt-1 mb-6">$100</p>
 
         <!-- Formulario tarjeta -->
@@ -168,14 +165,14 @@
             placeholder="Número de tarjeta:"
             inputmode="numeric"
             maxlength="19"
-            class="w-full rounded-2xl border border-gray-300 px-5 py-4 text-lg focus:outline-none focus:ring-4 focus:ring-blue-300"
+            class="w-full rounded-2xl border border-gray-300 px-5 py-4 text-lg focus:outline-none focus:ring-4 focus:ring-blue-900"
           />
 
           <input
             type="text"
             id="cardName"
             placeholder="Nombre completo:"
-            class="w-full rounded-2xl border border-gray-300 px-5 py-4 text-lg focus:outline-none focus:ring-4 focus:ring-blue-300"
+            class="w-full rounded-2xl border border-gray-300 px-5 py-4 text-lg focus:outline-none focus:ring-4 focus:ring-blue-900"
           />
 
           <div class="grid grid-cols-2 gap-3">
@@ -185,7 +182,7 @@
               placeholder="Vencimiento:"
               inputmode="numeric"
               maxlength="5"
-              class="w-full rounded-2xl border border-gray-300 px-5 py-4 text-lg focus:outline-none focus:ring-4 focus:ring-blue-300"
+              class="w-full rounded-2xl border border-gray-300 px-5 py-4 text-lg focus:outline-none focus:ring-4 focus:ring-blue-900"
             />
 
             <input
@@ -193,8 +190,8 @@
               id="cardCvv"
               placeholder="Código (CVV):"
               inputmode="numeric"
-              maxlength="4"
-              class="w-full rounded-2xl border border-gray-300 px-5 py-4 text-lg focus:outline-none focus:ring-4 focus:ring-blue-300"
+              maxlength="3"
+              class="w-full rounded-2xl border border-gray-300 px-5 py-4 text-lg focus:outline-none focus:ring-4 focus:ring-blue-900"
             />
           </div>
 
@@ -202,15 +199,11 @@
             type="submit"
             id="btnPagar"
             disabled
-            class="w-full mt-2 bg-blue-700 hover:bg-blue-800 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:hover:bg-gray-400 text-white text-xl md:text-2xl font-bold
+            class="w-full mt-2 bg-blue-700 hover:bg-blue-900 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:hover:bg-gray-400 text-white text-xl md:text-2xl font-bold
                    py-4 rounded-2xl shadow-lg active:scale-95 disabled:active:scale-100 transition"
           >
             Pagar
           </button>
-
-          <p class="text-center text-sm text-gray-500 mt-2">
-            *Pago simulado (solo para demo).
-          </p>
         </form>
       </div>
     </div>
