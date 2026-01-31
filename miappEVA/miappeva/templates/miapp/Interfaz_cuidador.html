@@ -10,21 +10,21 @@
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
 
   <style>
-    body { font-family: 'Poppins', sans-serif; background-color: #e9e2e2; } /* como tu mockup */
+    body { font-family: 'Poppins', sans-serif; background-color: #e9e2e2; }
   </style>
 </head>
 
 <body class="min-h-screen text-gray-900">
 
-<!-- HEADER (igual a inicio.html) -->
+<!-- HEADER -->
 <header class="fixed top-0 left-0 right-0 h-16 bg-blue-900 text-white flex items-center justify-between px-4 md:px-6 shadow-md text-2xl z-50">
-  <!-- Izquierda: Logo + EVA -->
+  <!-- Izquierda -->
   <div class="flex items-center gap-3">
     <img src="{% static 'miapp/img/eva.jpg' %}" alt="EVA Logo" class="w-12 h-12 rounded-full">
     <span class="text-3xl font-extrabold tracking-wide">EVA</span>
   </div>
 
-  <!-- Derecha: Historial + Perfil + Salir -->
+  <!-- Derecha -->
   <div class="flex items-center gap-3 md:gap-4 relative">
     <!-- Historial -->
     <div class="relative">
@@ -43,167 +43,181 @@
         <span class="hidden sm:inline">Historial</span>
       </button>
 
-      <!-- MODAL HISTORIAL -->
-<div
-  id="modalHistorial"
-  class="hidden absolute left-1/2 -translate-x-1/2 top-[3.25rem]
-         w-72 md:w-80 bg-white text-gray-900
-         rounded-2xl shadow-2xl border border-gray-200
-         overflow-hidden z-50"
->
-  <!-- Flechita -->
-  <div class="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white rotate-45 border-l border-t border-gray-200"></div>
+      <!-- MODAL HISTORIAL (igual que tu código) -->
+      <div
+        id="modalHistorial"
+        class="hidden absolute left-1/2 -translate-x-1/2 top-[3.25rem]
+               w-72 md:w-80 bg-white text-gray-900
+               rounded-2xl shadow-2xl border border-gray-200
+               overflow-hidden z-50"
+      >
+        <div class="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white rotate-45 border-l border-t border-gray-200"></div>
 
-  <!-- Encabezado del modal -->
-  <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-    <span class="text-xl">📜</span>
-    <p class="font-extrabold text-sm tracking-wide">Historial</p>
-  </div>
+        <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+          <span class="text-xl">📜</span>
+          <p class="font-extrabold text-sm tracking-wide">Historial</p>
+        </div>
 
-  <!-- Contenido -->
-  <div class="p-5">
-    <!-- Estado vacío bonito -->
-    <div class="h-40 flex flex-col items-center justify-center text-center gap-2">
-      <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-2xl">🗂️</div>
-      <p class="font-extrabold text-gray-800">Aún no hay historial</p>
-      <p class="text-sm text-gray-500">Aquí aparecerán el historial de los medicamentos.</p>
+        <div class="p-5">
+          <div class="h-40 flex flex-col items-center justify-center text-center gap-2">
+            <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-2xl">🗂️</div>
+            <p class="font-extrabold text-gray-800">Aún no hay historial</p>
+            <p class="text-sm text-gray-500">Aquí aparecerán el historial de los medicamentos.</p>
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
-</div>
-</div>
 
-    <!-- Perfil -->
+    <!-- PERFIL: botón redondo como el mockup -->
     <div class="relative">
       <button
         type="button"
         id="btnPerfil"
-        class="flex items-center justify-center gap-2
-               bg-blue-700 hover:bg-blue-800
-               text-white font-extrabold
-               px-3 py-1 rounded-lg shadow
-               text-lg transition
-               hover:scale-105 active:scale-95
-               focus:outline-none focus:ring-2 focus:ring-blue-300"
+        class="w-11 h-11 rounded-full bg-white/100 hover:bg-white/80
+               flex items-center justify-center
+               shadow transition
+               active:scale-95 focus:outline-none focus:ring-2 focus:ring-white/60"
         aria-label="Perfil"
         title="Perfil"
       >
         <span class="text-2xl">👤</span>
-        <span class="hidden sm:inline">Perfil</span>
       </button>
 
-      <!-- MODAL PERFIL -->
-<div
-  id="modalPerfil"
-  class="hidden absolute left-1/2 -translate-x-1/2 top-[3.25rem]
-         w-80 md:w-96 bg-white text-gray-900
-         rounded-2xl shadow-2xl border border-gray-200
-         overflow-hidden z-50"
->
-  <!-- Flechita -->
-  <div class="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white rotate-45 border-l border-t border-gray-200"></div>
+      <!-- PANEL PERFIL (nuevo diseño) -->
+      <div
+        id="panelPerfil"
+        class="hidden absolute right-0 top-[3.25rem]
+               w-[22rem] sm:w-[24rem]
+               bg-white text-gray-900
+               rounded-3xl shadow-2xl border border-gray-200
+               overflow-hidden z-50"
+      >
+        <!-- Header del panel -->
+        <div class="px-6 pt-6 pb-4 flex items-start justify-between gap-4">
+          
+          <!-- Texto izquierda -->
+          <div class="flex-1 space-y-4">
+            <!-- Título grande -->
+            <p class="font-extrabold text-2xl leading-tight">
+              Perfil del cuidador
+            </p>
 
-  <!-- Encabezado -->
-  <div class="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-      <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-xl">👤</div>
-      <div class="leading-tight">
-        <p class="font-extrabold text-sm tracking-wide">Perfil del cuidador</p>
-        <p class="text-xs text-gray-500">Información de contacto</p>
+            <!-- Datos cuidador (más arriba y compactos) -->
+            <div class="space-y-3 text-base">
+              <p>
+                <span class="font-extrabold">Nombre:</span>
+                <span class="text-gray-700"> {{ cuidador_nombre|default:"" }}</span>
+              </p>
+
+              <p class="break-all">
+                <span class="font-extrabold">Correo:</span>
+                <span class="text-gray-700"> {{ cuidador_correo|default:"" }}</span>
+              </p>
+
+              <p>
+                <span class="font-extrabold">Teléfono:</span>
+                <span class="text-gray-700"> {{ cuidador_telefono|default:"" }}</span>
+              </p>
+            </div>
+          </div>
+
+          <!-- Icono circular derecha (SIN CAMBIOS) -->
+          <div class="w-20 h-20 rounded-full border border-gray-700 bg-white flex items-center justify-center shrink-0">
+            <span class="text-5xl">👤</span>
+          </div>
+        </div>
+
+        <!-- Línea divisoria -->
+        <div class="h-px bg-gray-200 mx-6"></div>
+
+          <!-- Adultos vinculados -->
+          <div class="space-y-3">
+            <p class="text-xl pt-4 font-extrabold text-center">Perfil del adulto</p>
+
+            <div class="space-y-3">
+              {# OPCIÓN 1: si ya mandas una lista desde tu view: adultos_vinculados #}
+              {% if adultos_vinculados %}
+                {% for adulto in adultos_vinculados %}
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center bg-white">👤</div>
+                    <p class="text-sm font-semibold text-gray-800">
+                      {{ adulto.nombre_completo|default:adulto }}
+                    </p>
+                  </div>
+                {% endfor %}
+              {% else %}
+                <p class="text-sm text-gray-500 text-center pb-4">
+                  Aún no has vinculado a ningún adulto.
+                </p>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="h-px bg-gray-200 mx-6"></div>
+
+          <!-- Cerrar sesión -->
+          <div class="pt-4 pb-4 flex justify-center">
+            <a
+              href="{% url 'salir' %}"
+              class="bg-red-500 hover:bg-red-600 text-white
+                     font-extrabold px-6 py-2 rounded-lg shadow
+                     transition active:scale-95"
+            >
+              Cerrar sesion
+            </a>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- Contenido -->
-  <div class="p-5 space-y-3">
-    <div class="flex items-start gap-3">
-      <span class="text-lg">🪪</span>
-      <p class="text-sm">
-        <span class="font-extrabold">Nombre:</span>
-        <span class="text-gray-700">{{ cuidador_nombre|default:"" }}</span>
-      </p>
-    </div>
-
-    <div class="flex items-start gap-3">
-      <span class="text-lg">📧</span>
-      <p class="text-sm break-all">
-        <span class="font-extrabold">Correo:</span>
-        <span class="text-gray-700">{{ cuidador_correo|default:"" }}</span>
-      </p>
-    </div>
-
-    <div class="flex items-start gap-3">
-      <span class="text-lg">📞</span>
-      <p class="text-sm">
-        <span class="font-extrabold">Teléfono:</span>
-        <span class="text-gray-700">{{ cuidador_telefono|default:"" }}</span>
-      </p>
-    </div>
-  </div>
-</div>
-</div>  
-
-    <!-- Salir (igual a inicio.html) -->
-    <a
-      href="{% url 'salir' %}"
-      class="bg-red-500 hover:bg-red-600
-             text-white font-bold
-             px-4 py-2 rounded-lg shadow
-             text-lg transition
-             hover:scale-105 active:scale-95
-             focus:outline-none focus:ring-2 focus:ring-red-300"
-    >
-      Salir
-    </a>
+    <!-- ✅ (Se elimina el botón Salir del header) -->
   </div>
 </header>
 
-  <!-- CUERPO (vacío grande como tu imagen) -->
-  <main class="pt-12">
-    <div class="min-h-[calc(100vh-64px)]"></div>
-  </main>
+<!-- CUERPO -->
+<main class="pt-12">
+  <div class="min-h-[calc(100vh-64px)]"></div>
+</main>
 
-  <!-- FOOTER -->
-  <footer class="fixed bottom-0 left-0 right-0 h-4 bg-blue-900"></footer>
+<!-- FOOTER -->
+<footer class="fixed bottom-0 left-0 right-0 h-7 bg-blue-900"></footer>
 
-  <!-- JS: abre/cierra modales y cierra al hacer clic fuera -->
-  <script>
-    const btnHistorial = document.getElementById("btnHistorial");
-    const modalHistorial = document.getElementById("modalHistorial");
+<!-- JS -->
+<script>
+  const btnHistorial = document.getElementById("btnHistorial");
+  const modalHistorial = document.getElementById("modalHistorial");
 
-    const btnPerfil = document.getElementById("btnPerfil");
-    const modalPerfil = document.getElementById("modalPerfil");
+  const btnPerfil = document.getElementById("btnPerfil");
+  const panelPerfil = document.getElementById("panelPerfil");
 
-    function cerrarTodos() {
-      modalHistorial.classList.add("hidden");
-      modalPerfil.classList.add("hidden");
-    }
+  function cerrarTodos() {
+    modalHistorial.classList.add("hidden");
+    panelPerfil.classList.add("hidden");
+  }
 
-    btnHistorial.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const estabaAbierto = !modalHistorial.classList.contains("hidden");
-      cerrarTodos();
-      if (!estabaAbierto) modalHistorial.classList.remove("hidden");
-    });
+  btnHistorial.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const estabaAbierto = !modalHistorial.classList.contains("hidden");
+    cerrarTodos();
+    if (!estabaAbierto) modalHistorial.classList.remove("hidden");
+  });
 
-    btnPerfil.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const estabaAbierto = !modalPerfil.classList.contains("hidden");
-      cerrarTodos();
-      if (!estabaAbierto) modalPerfil.classList.remove("hidden");
-    });
+  btnPerfil.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const estabaAbierto = !panelPerfil.classList.contains("hidden");
+    cerrarTodos();
+    if (!estabaAbierto) panelPerfil.classList.remove("hidden");
+  });
 
-    // Evitar que al hacer click dentro del modal se cierre
-    modalHistorial.addEventListener("click", (e) => e.stopPropagation());
-    modalPerfil.addEventListener("click", (e) => e.stopPropagation());
+  modalHistorial.addEventListener("click", (e) => e.stopPropagation());
+  panelPerfil.addEventListener("click", (e) => e.stopPropagation());
 
-    // Click fuera cierra todo
-    document.addEventListener("click", () => cerrarTodos());
+  document.addEventListener("click", () => cerrarTodos());
 
-    // Escape cierra todo
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") cerrarTodos();
-    });
-  </script>
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") cerrarTodos();
+  });
+</script>
 
 </body>
 </html>
