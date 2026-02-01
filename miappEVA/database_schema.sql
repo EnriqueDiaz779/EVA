@@ -14,6 +14,7 @@ CREATE TABLE Usuarios (
   Tipo ENUM('adulto','cuidador','admin') NOT NULL,
   correo VARCHAR(255) NULL UNIQUE,
   Telefono VARCHAR(20) NULL,
+  Codigo_unico VARCHAR(20) UNIQUE NULL,
   creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
   activo BOOL DEFAULT TRUE
 );

@@ -16,140 +16,210 @@
 
 <body class="min-h-screen text-gray-900">
 
-<!-- HEADER -->
-<header class="fixed top-0 left-0 right-0 h-16 bg-blue-900 text-white flex items-center justify-between px-4 md:px-6 shadow-md text-2xl z-50">
-  <!-- Izquierda -->
-  <div class="flex items-center gap-3">
-    <img src="{% static 'miapp/img/eva.jpg' %}" alt="EVA Logo" class="w-12 h-12 rounded-full">
-    <span class="text-3xl font-extrabold tracking-wide">EVA</span>
-  </div>
+<!--TODO el contenido "de la app" va dentro de appWrap -->
+<div id="appWrap">
 
-  <!-- Derecha -->
-  <div class="flex items-center gap-3 md:gap-4 relative">
-    <!-- Historial -->
-    <div class="relative">
-      <button
-        type="button"
-        id="btnHistorial"
-        class="flex items-center justify-center gap-2
-               bg-yellow-400 hover:bg-yellow-500
-               text-blue-950 font-extrabold
-               px-3 py-1 rounded-lg shadow
-               text-lg transition
-               hover:scale-105 active:scale-95
-               focus:outline-none focus:ring-2 focus:ring-yellow-200"
-      >
-        <span class="text-2xl">📜</span>
-        <span class="hidden sm:inline">Historial</span>
-      </button>
+  <!-- HEADER -->
+  <header class="fixed top-0 left-0 right-0 h-16 bg-blue-900 text-white flex items-center justify-between px-4 md:px-6 shadow-md text-2xl z-50">
+    <!-- Izquierda -->
+    <div class="flex items-center gap-3">
+      <img src="{% static 'miapp/img/eva.jpg' %}" alt="EVA Logo" class="w-12 h-12 rounded-full">
+      <span class="text-3xl font-extrabold tracking-wide">EVA</span>
+    </div>
 
-      <!-- MODAL HISTORIAL (igual que tu código) -->
-      <div
-        id="modalHistorial"
-        class="hidden absolute left-1/2 -translate-x-1/2 top-[3.25rem]
-               w-72 md:w-80 bg-white text-gray-900
-               rounded-2xl shadow-2xl border border-gray-200
-               overflow-hidden z-50"
-      >
-        <div class="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white rotate-45 border-l border-t border-gray-200"></div>
+    <!-- Derecha -->
+    <div class="flex items-center gap-3 md:gap-4 relative">
 
-        <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-          <span class="text-xl">📜</span>
-          <p class="font-extrabold text-sm tracking-wide">Historial</p>
-        </div>
+      <!-- Historial -->
+      <div class="relative">
+        <button
+          type="button"
+          id="btnHistorial"
+          class="flex items-center justify-center gap-2
+                 bg-yellow-400 hover:bg-yellow-500
+                 text-blue-950 font-extrabold
+                 px-3 py-1 rounded-lg shadow
+                 text-lg transition
+                 hover:scale-105 active:scale-95
+                 focus:outline-none focus:ring-2 focus:ring-yellow-200"
+        >
+          <span class="text-2xl">📜</span>
+          <span class="hidden sm:inline">Historial</span>
+        </button>
 
-        <div class="p-5">
-          <div class="h-40 flex flex-col items-center justify-center text-center gap-2">
-            <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-2xl">🗂️</div>
-            <p class="font-extrabold text-gray-800">Aún no hay historial</p>
-            <p class="text-sm text-gray-500">Aquí aparecerán el historial de los medicamentos.</p>
+        <!-- MODAL HISTORIAL -->
+        <div
+          id="modalHistorial"
+          class="hidden absolute left-1/2 -translate-x-1/2 top-[3.25rem]
+                 w-72 md:w-80 bg-white text-gray-900
+                 rounded-2xl shadow-2xl border border-gray-200
+                 overflow-hidden z-50"
+        >
+          <div class="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white rotate-45 border-l border-t border-gray-200"></div>
+
+          <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+            <span class="text-xl">📜</span>
+            <p class="font-extrabold text-sm tracking-wide">Historial</p>
+          </div>
+
+          <div class="p-5">
+            {% if meds_adulto %}
+              <div class="space-y-3 max-h-64 overflow-auto pr-1">
+                {% for m in meds_adulto %}
+                  <div class="p-3 rounded-xl border border-gray-200 bg-gray-50">
+                    <p class="font-extrabold text-gray-900">{{ m.nombre_detectado }}</p>
+                    <p class="text-sm text-gray-600">{{ m.descripcion }}</p>
+                    <p class="text-xs text-gray-400 mt-1">Confianza: {{ m.confianza }}</p>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="h-40 flex flex-col items-center justify-center text-center gap-2">
+                <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-2xl">🗂️</div>
+                <p class="font-extrabold text-gray-800">Aún no hay historial</p>
+                <p class="text-sm text-gray-500">Aquí aparecerán el historial de los medicamentos.</p>
+              </div>
+            {% endif %}
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- PERFIL: botón redondo como el mockup -->
-    <div class="relative">
-      <button
-        type="button"
-        id="btnPerfil"
-        class="w-11 h-11 rounded-full bg-white/100 hover:bg-white/80
-               flex items-center justify-center
-               shadow transition
-               active:scale-95 focus:outline-none focus:ring-2 focus:ring-white/60"
-        aria-label="Perfil"
-        title="Perfil"
-      >
-        <span class="text-2xl">👤</span>
-      </button>
+      <!-- PERFIL -->
+      <div class="relative">
+        <button
+          type="button"
+          id="btnPerfil"
+          class="w-11 h-11 rounded-full bg-white/100 hover:bg-white/80
+                 flex items-center justify-center
+                 shadow transition
+                 active:scale-95 focus:outline-none focus:ring-2 focus:ring-white/60"
+          aria-label="Perfil"
+          title="Perfil"
+        >
+          <span class="text-2xl">👤</span>
+        </button>
 
-      <!-- PANEL PERFIL (nuevo diseño) -->
-      <div
-        id="panelPerfil"
-        class="hidden absolute right-0 top-[3.25rem]
-               w-[22rem] sm:w-[24rem]
-               bg-white text-gray-900
-               rounded-3xl shadow-2xl border border-gray-200
-               overflow-hidden z-50"
-      >
-        <!-- Header del panel -->
-        <div class="px-6 pt-6 pb-4 flex items-start justify-between gap-4">
-          
-          <!-- Texto izquierda -->
-          <div class="flex-1 space-y-4">
-            <!-- Título grande -->
-            <p class="font-extrabold text-2xl leading-tight">
-              Perfil del cuidador
-            </p>
-
-            <!-- Datos cuidador (más arriba y compactos) -->
-            <div class="space-y-3 text-base">
-              <p>
-                <span class="font-extrabold">Nombre:</span>
-                <span class="text-gray-700"> {{ cuidador_nombre|default:"" }}</span>
+        <!-- PANEL PERFIL -->
+        <div
+          id="panelPerfil"
+          class="hidden fixed right-0 top-[3.9rem]
+                w-[22rem] sm:w-[25rem]
+                bg-white text-gray-900
+                rounded-l-3xl shadow-2xl border border-gray-200
+                overflow-hidden z-50"
+        >
+          <!-- Header del panel -->
+          <div class="px-6 pt-6 pb-4 flex items-start justify-between gap-4">
+            <div class="flex-1 space-y-4">
+              <p class="font-extrabold text-2xl leading-tight">
+                Perfil del cuidador
               </p>
 
-              <p class="break-all">
-                <span class="font-extrabold">Correo:</span>
-                <span class="text-gray-700"> {{ cuidador_correo|default:"" }}</span>
-              </p>
+              <div class="space-y-3 text-base">
+                <p>
+                  <span class="font-extrabold">Nombre:</span>
+                  <span class="text-gray-700"> {{ cuidador_nombre|default:"" }}</span>
+                </p>
 
-              <p>
-                <span class="font-extrabold">Teléfono:</span>
-                <span class="text-gray-700"> {{ cuidador_telefono|default:"" }}</span>
-              </p>
+                <p class="break-all">
+                  <span class="font-extrabold">Correo:</span>
+                  <span class="text-gray-700"> {{ cuidador_correo|default:"" }}</span>
+                </p>
+
+                <p>
+                  <span class="font-extrabold">Teléfono:</span>
+                  <span class="text-gray-700"> {{ cuidador_telefono|default:"" }}</span>
+                </p>
+              </div>
+            </div>
+
+            <div class="w-20 h-20 rounded-full border border-gray-700 bg-white flex items-center justify-center shrink-0">
+              <span class="text-5xl">👤</span>
             </div>
           </div>
 
-          <!-- Icono circular derecha (SIN CAMBIOS) -->
-          <div class="w-20 h-20 rounded-full border border-gray-700 bg-white flex items-center justify-center shrink-0">
-            <span class="text-5xl">👤</span>
-          </div>
-        </div>
+          <div class="h-px bg-gray-200 mx-6"></div>
 
-        <!-- Línea divisoria -->
-        <div class="h-px bg-gray-200 mx-6"></div>
-
-          <!-- Adultos vinculados -->
+          <!-- PERFIL DEL ADULTO -->
           <div class="space-y-3">
             <p class="text-xl pt-4 font-extrabold text-center">Perfil del adulto</p>
 
-            <div class="space-y-3">
-              {# OPCIÓN 1: si ya mandas una lista desde tu view: adultos_vinculados #}
-              {% if adultos_vinculados %}
-                {% for adulto in adultos_vinculados %}
-                  <div class="flex items-center gap-3">
+            <!-- Adulto actual + botón + -->
+            <div class="px-6">
+              <div class="flex items-center justify-between gap-3 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3">
+                <div id="adultoActual" class="flex items-center gap-3">
+                  {% if adulto_vinculado %}
                     <div class="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center bg-white">👤</div>
-                    <p class="text-sm font-semibold text-gray-800">
-                      {{ adulto.nombre_completo|default:adulto }}
-                    </p>
-                  </div>
-                {% endfor %}
-              {% else %}
-                <p class="text-sm text-gray-500 text-center pb-4">
-                  Aún no has vinculado a ningún adulto.
+                    <p class="text-sm font-semibold text-gray-800">{{ adulto_vinculado.nombre }}</p>
+                  {% else %}
+                    <p class="text-sm text-gray-500">Aún no has vinculado a ningún adulto.</p>
+                  {% endif %}
+                </div>
+
+                <!-- Botón + -->
+                <button id="btnAddAdulto"
+                        type="button"
+                        class="w-9 h-9 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-extrabold shadow
+                              flex items-center justify-center transition active:scale-95"
+                        title="Vincular otro adulto">
+                  +
+                </button>
+              </div>
+
+              <!-- Lista de adultos vinculados -->
+              <div class="mt-3">
+                <p class="text-xs font-bold text-gray-500 mb-2">Adultos vinculados</p>
+                <div id="adultosList" class="space-y-2">
+                  <!-- Se llena por JS -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mini modal dentro del panel para agregar código -->
+          <div id="miniModalAddAdulto" class="hidden fixed inset-0 z-[999999]">
+            <div class="absolute inset-0 bg-black/40"></div>
+
+            <div class="relative h-full w-full flex items-center justify-center px-4">
+              <div class="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-200 p-6">
+                <div class="flex items-center justify-between">
+                  <p class="font-extrabold text-lg">Vincular adulto</p>
+                  <button id="btnCerrarMini" type="button" class="text-gray-500 hover:text-gray-800 text-xl">✕</button>
+                </div>
+
+                <p class="mt-2 text-sm text-gray-600">
+                  Ingresa el código único del adulto.
                 </p>
-              {% endif %}
+
+                <div class="mt-4 flex items-center gap-2 border border-gray-300 rounded-xl px-3 py-2">
+                  <input id="codigoMiniInput"
+                        type="password"
+                        maxlength="20"
+                        placeholder="************"
+                        class="w-full outline-none font-mono tracking-widest text-center" />
+                  <button
+                  id="toggleMiniCodigo"
+                  type="button"
+                  class="p-2 rounded-lg hover:bg-gray-100 transition active:scale-95"
+                  aria-label="Mostrar/Ocultar código"
+                  title="Mostrar/Ocultar"
+                >
+                  <!-- OJO NORMAL (cuando esté visible) -->
+                  <svg id="iconMiniEyeOn" xmlns="http://www.w3.org/2000/svg" class="hidden h-5 w-5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                </button>
+                </div>
+
+                <p id="miniError" class="hidden mt-2 text-sm font-semibold text-red-600"></p>
+
+                <button id="btnVincularMini"
+                        type="button"
+                        class="mt-4 w-full bg-blue-900 hover:bg-blue-950 text-white font-extrabold py-2 rounded-xl shadow transition active:scale-95">
+                  Vincular
+                </button>
+              </div>
             </div>
           </div>
 
@@ -168,55 +238,447 @@
           </div>
         </div>
       </div>
+
     </div>
+  </header>
 
-    <!-- ✅ (Se elimina el botón Salir del header) -->
+  <!-- CUERPO -->
+  <main class="pt-12">
+    <div class="min-h-[calc(100vh-64px)]"></div>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="fixed bottom-0 left-0 right-0 h-7 bg-blue-900"></footer>
+
+</div><!-- /appWrap -->
+
+<!-- CSRF token para AJAX -->
+{% csrf_token %}
+
+<!-- IMPORTANTE: para que la lista cargue al entrar, manda desde views.py "adultos_json" (json.dumps(adultos)) -->
+<script id="adultosIniciales" type="application/json">
+  {{ adultos_json|default:"[]"|safe }}
+</script>
+
+<!-- BLOQUEO + MODAL (estilo screenshot) -->
+<div id="overlayVinculo" class="{% if not bloqueado_por_vinculo %}hidden{% endif %} fixed inset-0 z-[99999]">
+  <div class="absolute inset-0 bg-black/55"></div>
+
+  <div class="relative h-full w-full flex items-center justify-center px-4">
+    <div class="w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-gray-200 px-10 py-10 text-center">
+
+      <p class="text-3xl font-extrabold tracking-wide text-gray-900">
+        BIENVENIDO A EVA
+      </p>
+
+      <p class="mt-3 text-lg text-gray-800 leading-snug">
+        Ingresa el código único del adulto<br/>mayor que deseas cuidar
+      </p>
+
+      <div class="mt-6 flex items-center justify-center">
+        <div class="flex items-center gap-3 px-5 py-3 rounded-full border border-gray-400 bg-white shadow-sm">
+          <input id="codigoInput"
+                 type="password"
+                 maxlength="20"
+                 autocomplete="off"
+                 placeholder="************"
+                 class="w-56 text-center font-mono tracking-widest text-lg outline-none bg-transparent" />
+
+          <button id="toggleCodigo"
+                  type="button"
+                  class="p-1 rounded-full hover:bg-gray-100 focus:outline-none"
+                  aria-label="Mostrar/Ocultar código"
+                  title="Mostrar/Ocultar">
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <p id="codigoError" class="hidden mt-3 text-sm font-semibold text-red-600"></p>
+
+      <p class="mt-6 text-sm text-gray-700">
+        Se encuentra en la esquina inferior izquierda de la<br/>pantalla del adulto mayor.
+      </p>
+
+      <button id="btnConfirmarCodigo"
+              type="button"
+              class="mt-7 inline-flex items-center justify-center
+                     bg-blue-900 hover:bg-blue-950 text-white
+                     font-extrabold px-8 py-3 rounded-xl shadow
+                     transition active:scale-95">
+        Confirmar
+      </button>
+
+    </div>
   </div>
-</header>
+</div>
 
-<!-- CUERPO -->
-<main class="pt-12">
-  <div class="min-h-[calc(100vh-64px)]"></div>
-</main>
-
-<!-- FOOTER -->
-<footer class="fixed bottom-0 left-0 right-0 h-7 bg-blue-900"></footer>
-
-<!-- JS -->
 <script>
+  // ===== Referencias UI =====
   const btnHistorial = document.getElementById("btnHistorial");
   const modalHistorial = document.getElementById("modalHistorial");
 
   const btnPerfil = document.getElementById("btnPerfil");
   const panelPerfil = document.getElementById("panelPerfil");
 
-  function cerrarTodos() {
-    modalHistorial.classList.add("hidden");
-    panelPerfil.classList.add("hidden");
+  const appWrap = document.getElementById("appWrap");
+
+  // Overlay modal principal (bloqueo)
+  const overlayVinculo = document.getElementById("overlayVinculo");
+  const codigoInput = document.getElementById("codigoInput");
+  const toggleCodigo = document.getElementById("toggleCodigo");
+  const btnConfirmarCodigo = document.getElementById("btnConfirmarCodigo");
+  const codigoError = document.getElementById("codigoError");
+
+  // Mini modal panel perfil
+  const btnAddAdulto = document.getElementById("btnAddAdulto");
+  const miniModalAddAdulto = document.getElementById("miniModalAddAdulto");
+  const btnCerrarMini = document.getElementById("btnCerrarMini");
+  const codigoMiniInput = document.getElementById("codigoMiniInput");
+  const toggleMiniCodigo = document.getElementById("toggleMiniCodigo");
+  const btnVincularMini = document.getElementById("btnVincularMini");
+  const miniError = document.getElementById("miniError");
+
+  // Adulto actual + lista
+  const adultosList = document.getElementById("adultosList");
+  const adultoActual = document.getElementById("adultoActual");
+
+  // CSRF
+  const csrfToken = document.querySelector("input[name=csrfmiddlewaretoken]")?.value || "";
+
+  // ====== Bloqueo total ======
+  function setBloqueo(activo) {
+    if (!overlayVinculo) return;
+    if (activo) {
+      overlayVinculo.classList.remove("hidden");
+      if (appWrap) appWrap.classList.add("pointer-events-none");
+      document.body.classList.add("overflow-hidden");
+    } else {
+      overlayVinculo.classList.add("hidden");
+      if (appWrap) appWrap.classList.remove("pointer-events-none");
+      document.body.classList.remove("overflow-hidden");
+    }
   }
 
-  btnHistorial.addEventListener("click", (e) => {
+  // Si el template llegó bloqueado
+  if (overlayVinculo && !overlayVinculo.classList.contains("hidden")) {
+    setBloqueo(true);
+  }
+
+  // ====== Modales header ======
+  function cerrarTodos() {
+    modalHistorial?.classList.add("hidden");
+    panelPerfil?.classList.add("hidden");
+  }
+
+  btnHistorial?.addEventListener("click", (e) => {
+    if (overlayVinculo && !overlayVinculo.classList.contains("hidden")) return;
     e.stopPropagation();
     const estabaAbierto = !modalHistorial.classList.contains("hidden");
     cerrarTodos();
     if (!estabaAbierto) modalHistorial.classList.remove("hidden");
   });
 
-  btnPerfil.addEventListener("click", (e) => {
+  btnPerfil?.addEventListener("click", (e) => {
+    if (overlayVinculo && !overlayVinculo.classList.contains("hidden")) return;
     e.stopPropagation();
     const estabaAbierto = !panelPerfil.classList.contains("hidden");
     cerrarTodos();
     if (!estabaAbierto) panelPerfil.classList.remove("hidden");
   });
 
-  modalHistorial.addEventListener("click", (e) => e.stopPropagation());
-  panelPerfil.addEventListener("click", (e) => e.stopPropagation());
+  modalHistorial?.addEventListener("click", (e) => e.stopPropagation());
+  panelPerfil?.addEventListener("click", (e) => e.stopPropagation());
 
-  document.addEventListener("click", () => cerrarTodos());
+  document.addEventListener("click", () => {
+    if (overlayVinculo && !overlayVinculo.classList.contains("hidden")) return;
+    cerrarTodos();
+  });
 
   document.addEventListener("keydown", (e) => {
+    if (overlayVinculo && !overlayVinculo.classList.contains("hidden")) return;
     if (e.key === "Escape") cerrarTodos();
   });
+
+  // ====== Ojo mostrar/ocultar (modal principal) ======
+  toggleCodigo?.addEventListener("click", () => {
+    if (!codigoInput) return;
+    codigoInput.type = (codigoInput.type === "password") ? "text" : "password";
+  });
+
+  // ====== Helpers UI ======
+  function openMini() {
+    if (!miniModalAddAdulto) return;
+    if (miniError) {
+      miniError.classList.add("hidden");
+      miniError.textContent = "";
+    }
+    if (codigoMiniInput) codigoMiniInput.value = "";
+    miniModalAddAdulto.classList.remove("hidden");
+  }
+
+  function closeMini() {
+    miniModalAddAdulto?.classList.add("hidden");
+  }
+
+  function renderAdultoActual(nombre) {
+    if (!adultoActual) return;
+    if (!nombre) {
+      adultoActual.innerHTML = `<p class="text-sm text-gray-500">Aún no has vinculado a ningún adulto.</p>`;
+      return;
+    }
+    adultoActual.innerHTML = `
+      <div class="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center bg-white">👤</div>
+      <p class="text-sm font-semibold text-gray-800">${nombre}</p>
+    `;
+  }
+
+  function renderListaAdultos(adultos) {
+    if (!adultosList) return;
+
+    if (!Array.isArray(adultos) || adultos.length === 0) {
+      adultosList.innerHTML = `<p class="text-xs text-gray-400">Sin adultos vinculados.</p>`;
+      return;
+    }
+
+    adultosList.innerHTML = adultos.map(a => {
+      const activo = !!a.activo;
+      return `
+        <button type="button"
+          data-adulto-id="${a.id}"
+          class="w-full text-left px-3 py-2 rounded-xl border transition
+                 ${activo ? "border-blue-900 bg-blue-50" : "border-gray-200 bg-white hover:bg-gray-50"}">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-semibold ${activo ? "text-blue-900" : "text-gray-800"}">${a.nombre}</span>
+            ${activo ? `<span class="text-[10px] font-extrabold text-blue-900">ACTUAL</span>` : ``}
+          </div>
+        </button>
+      `;
+    }).join("");
+
+    // listeners (cambiar adulto)
+    adultosList.querySelectorAll("button[data-adulto-id]").forEach(btn => {
+      btn.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        const adultoId = btn.getAttribute("data-adulto-id");
+        await cambiarAdultoActual(adultoId);
+      });
+    });
+  }
+
+  function updateHistorial(medicamentos) {
+    if (!Array.isArray(medicamentos)) return;
+    const p5 = modalHistorial?.querySelector(".p-5");
+    if (!p5) return;
+
+    if (medicamentos.length === 0) {
+      p5.innerHTML = `
+        <div class="h-40 flex flex-col items-center justify-center text-center gap-2">
+          <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-2xl">🗂️</div>
+          <p class="font-extrabold text-gray-800">Aún no hay historial</p>
+          <p class="text-sm text-gray-500">Aquí aparecerán el historial de los medicamentos.</p>
+        </div>
+      `;
+      return;
+    }
+
+    p5.innerHTML = `
+      <div class="space-y-3 max-h-64 overflow-auto pr-1">
+        ${medicamentos.map(m => `
+          <div class="p-3 rounded-xl border border-gray-200 bg-gray-50">
+            <p class="font-extrabold text-gray-900">${m.nombre || ""}</p>
+            <p class="text-sm text-gray-600">${m.descripcion || ""}</p>
+            <p class="text-xs text-gray-400 mt-1">Confianza: ${(Number(m.confianza || 0)).toFixed(2)}</p>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  // ====== Acciones backend ======
+  async function postForm(url, formData) {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "X-CSRFToken": csrfToken },
+      body: formData
+    });
+    const data = await resp.json().catch(() => ({}));
+    return { resp, data };
+  }
+
+  // ====== Vincular (modal bloqueo inicial) ======
+  async function vincularDesdeOverlay() {
+    const codigo = (codigoInput?.value || "").trim().toUpperCase();
+    if (!codigoError) return;
+
+    codigoError.classList.add("hidden");
+    codigoError.textContent = "";
+
+    if (!codigo) {
+      codigoError.textContent = "Ingresa el código único.";
+      codigoError.classList.remove("hidden");
+      return;
+    }
+
+    btnConfirmarCodigo.disabled = true;
+    btnConfirmarCodigo.textContent = "Validando...";
+
+    try {
+      const form = new FormData();
+      form.append("codigo", codigo);
+
+      const { data } = await postForm("{% url 'vincular_adulto_por_codigo' %}", form);
+
+      if (!data.ok) {
+        codigoError.textContent = data.error || "Código inválido.";
+        codigoError.classList.remove("hidden");
+        return;
+      }
+
+      // UI updates
+      renderAdultoActual(data.adulto?.nombre || "");
+      renderListaAdultos(data.adultos || []);
+      updateHistorial(data.medicamentos || []);
+
+      // Desbloquear app
+      setBloqueo(false);
+
+    } catch (e) {
+      codigoError.textContent = "Error de conexión. Intenta de nuevo.";
+      codigoError.classList.remove("hidden");
+    } finally {
+      btnConfirmarCodigo.disabled = false;
+      btnConfirmarCodigo.textContent = "Confirmar";
+    }
+  }
+
+  btnConfirmarCodigo?.addEventListener("click", vincularDesdeOverlay);
+  codigoInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      vincularDesdeOverlay();
+    }
+  });
+
+  // ====== Vincular (mini modal dentro del panel) ======
+  async function vincularDesdeMini() {
+    const codigo = (codigoMiniInput?.value || "").trim().toUpperCase();
+    if (miniError) {
+      miniError.classList.add("hidden");
+      miniError.textContent = "";
+    }
+
+    if (!codigo) {
+      if (miniError) {
+        miniError.textContent = "Ingresa el código único.";
+        miniError.classList.remove("hidden");
+      }
+      return;
+    }
+
+    btnVincularMini.disabled = true;
+    btnVincularMini.textContent = "Vinculando...";
+
+    try {
+      const form = new FormData();
+      form.append("codigo", codigo);
+
+      const { data } = await postForm("{% url 'vincular_adulto_por_codigo' %}", form);
+
+      if (!data.ok) {
+        if (miniError) {
+          miniError.textContent = data.error || "Código inválido.";
+          miniError.classList.remove("hidden");
+        }
+        return;
+      }
+
+      // UI updates
+      renderAdultoActual(data.adulto?.nombre || "");
+      renderListaAdultos(data.adultos || []);
+      updateHistorial(data.medicamentos || []);
+
+      closeMini();
+    } catch (e) {
+      if (miniError) {
+        miniError.textContent = "Error de conexión. Intenta de nuevo.";
+        miniError.classList.remove("hidden");
+      }
+    } finally {
+      btnVincularMini.disabled = false;
+      btnVincularMini.textContent = "Vincular";
+    }
+  }
+
+  async function cambiarAdultoActual(adultoId) {
+    try {
+      const form = new FormData();
+      form.append("adulto_id", adultoId);
+
+      const { data } = await postForm("{% url 'cambiar_adulto_actual' %}", form);
+
+      if (!data.ok) return;
+
+      renderAdultoActual(data.adulto?.nombre || "");
+      renderListaAdultos(data.adultos || []);
+      updateHistorial(data.medicamentos || []);
+    } catch (e) {
+      // silencioso
+    }
+  }
+
+  // ====== Eventos mini modal ======
+btnAddAdulto?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  openMini(); // aquí ya resetea password + iconos
+});
+
+btnCerrarMini?.addEventListener("click", closeMini);
+
+miniModalAddAdulto?.addEventListener("click", (e) => {
+  if (e.target === miniModalAddAdulto) closeMini();
+});
+
+toggleMiniCodigo?.addEventListener("click", () => {
+  if (!codigoMiniInput) return;
+
+  const estabaVisible = (codigoMiniInput.type === "text");
+  codigoMiniInput.type = estabaVisible ? "password" : "text";
+
+  // Si ahora está visible => mostrar ojo normal
+  // Si ahora está oculto => mostrar ojo tachado
+  if (iconMiniEyeOff && iconMiniEyeOn) {
+    iconMiniEyeOff.classList.toggle("hidden", !estabaVisible); // si estaba visible, ahora oculto => tachado visible
+    iconMiniEyeOn.classList.toggle("hidden", estabaVisible);   // si estaba visible, ahora oculto => ojo normal hidden
+  }
+});
+
+btnVincularMini?.addEventListener("click", vincularDesdeMini);
+
+codigoMiniInput?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    vincularDesdeMini();
+  }
+});
+
+  // ====== Inicializar lista desde servidor ======
+  (function initAdultos() {
+    const el = document.getElementById("adultosIniciales");
+    if (!el) return;
+
+    try {
+      const adultos = JSON.parse(el.textContent || "[]");
+      renderListaAdultos(adultos);
+
+      // si hay uno activo, asegura que el "adultoActual" muestre el activo
+      const activo = Array.isArray(adultos) ? adultos.find(a => a.activo) : null;
+      if (activo && activo.nombre) renderAdultoActual(activo.nombre);
+    } catch (e) {
+      // si falla el JSON, no revienta
+    }
+  })();
 </script>
 
 </body>
