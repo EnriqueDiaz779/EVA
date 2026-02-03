@@ -6,6 +6,8 @@ from . import views
 from django.views.static import serve
 
 urlpatterns = [
+
+    path("crear-alarmas-receta/", views.crear_alarmas_receta, name="crear_alarmas_receta"),
     # --- Autenticación ---
     path("", views.login_view, name="login"),
     path("inicio/", views.inicio, name="inicio"),

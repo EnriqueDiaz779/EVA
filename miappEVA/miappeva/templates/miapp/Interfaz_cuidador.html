@@ -16,18 +16,15 @@
 
 <body class="min-h-screen text-gray-900">
 
-<!--TODO el contenido "de la app" va dentro de appWrap -->
 <div id="appWrap">
 
   <!-- HEADER -->
   <header class="fixed top-0 left-0 right-0 h-16 bg-blue-900 text-white flex items-center justify-between px-4 md:px-6 shadow-md text-2xl z-50">
-    <!-- Izquierda -->
     <div class="flex items-center gap-3">
       <img src="{% static 'miapp/img/eva.jpg' %}" alt="EVA Logo" class="w-12 h-12 rounded-full">
       <span class="text-3xl font-extrabold tracking-wide">EVA</span>
     </div>
 
-    <!-- Derecha -->
     <div class="flex items-center gap-3 md:gap-4 relative">
 
       <!-- Historial -->
@@ -108,28 +105,14 @@
                 rounded-l-3xl shadow-2xl border border-gray-200
                 overflow-hidden z-50"
         >
-          <!-- Header del panel -->
           <div class="px-6 pt-6 pb-4 flex items-start justify-between gap-4">
             <div class="flex-1 space-y-4">
-              <p class="font-extrabold text-2xl leading-tight">
-                Perfil del cuidador
-              </p>
+              <p class="font-extrabold text-2xl leading-tight">Perfil del cuidador</p>
 
               <div class="space-y-3 text-base">
-                <p>
-                  <span class="font-extrabold">Nombre:</span>
-                  <span class="text-gray-700"> {{ cuidador_nombre|default:"" }}</span>
-                </p>
-
-                <p class="break-all">
-                  <span class="font-extrabold">Correo:</span>
-                  <span class="text-gray-700"> {{ cuidador_correo|default:"" }}</span>
-                </p>
-
-                <p>
-                  <span class="font-extrabold">Teléfono:</span>
-                  <span class="text-gray-700"> {{ cuidador_telefono|default:"" }}</span>
-                </p>
+                <p><span class="font-extrabold">Nombre:</span><span class="text-gray-700"> {{ cuidador_nombre|default:"" }}</span></p>
+                <p class="break-all"><span class="font-extrabold">Correo:</span><span class="text-gray-700"> {{ cuidador_correo|default:"" }}</span></p>
+                <p><span class="font-extrabold">Teléfono:</span><span class="text-gray-700"> {{ cuidador_telefono|default:"" }}</span></p>
               </div>
             </div>
 
@@ -140,11 +123,9 @@
 
           <div class="h-px bg-gray-200 mx-6"></div>
 
-          <!-- PERFIL DEL ADULTO -->
           <div class="space-y-3">
             <p class="text-xl pt-4 font-extrabold text-center">Perfil del adulto</p>
 
-            <!-- Adulto actual + botón + -->
             <div class="px-6">
               <div class="flex items-center justify-between gap-3 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3">
                 <div id="adultoActual" class="flex items-center gap-3">
@@ -156,7 +137,6 @@
                   {% endif %}
                 </div>
 
-                <!-- Botón + -->
                 <button id="btnAddAdulto"
                         type="button"
                         class="w-9 h-9 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-extrabold shadow
@@ -166,17 +146,13 @@
                 </button>
               </div>
 
-              <!-- Lista de adultos vinculados -->
               <div class="mt-3">
                 <p class="text-xs font-bold text-gray-500 mb-2">Adultos vinculados</p>
-                <div id="adultosList" class="space-y-2">
-                  <!-- Se llena por JS -->
-                </div>
+                <div id="adultosList" class="space-y-2"></div>
               </div>
             </div>
           </div>
 
-          <!-- Mini modal dentro del panel para agregar código -->
           <div id="miniModalAddAdulto" class="hidden fixed inset-0 z-[999999]">
             <div class="absolute inset-0 bg-black/40"></div>
 
@@ -187,9 +163,7 @@
                   <button id="btnCerrarMini" type="button" class="text-gray-500 hover:text-gray-800 text-xl">✕</button>
                 </div>
 
-                <p class="mt-2 text-sm text-gray-600">
-                  Ingresa el código único del adulto.
-                </p>
+                <p class="mt-2 text-sm text-gray-600">Ingresa el código único del adulto.</p>
 
                 <div class="mt-4 flex items-center gap-2 border border-gray-300 rounded-xl px-3 py-2">
                   <input id="codigoMiniInput"
@@ -197,19 +171,17 @@
                         maxlength="20"
                         placeholder="************"
                         class="w-full outline-none font-mono tracking-widest text-center" />
-                  <button
-                  id="toggleMiniCodigo"
-                  type="button"
-                  class="p-2 rounded-lg hover:bg-gray-100 transition active:scale-95"
-                  aria-label="Mostrar/Ocultar código"
-                  title="Mostrar/Ocultar"
-                >
-                  <!-- OJO NORMAL (cuando esté visible) -->
-                  <svg id="iconMiniEyeOn" xmlns="http://www.w3.org/2000/svg" class="hidden h-5 w-5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                  </svg>
-                </button>
+
+                  <button id="toggleMiniCodigo"
+                          type="button"
+                          class="p-2 rounded-lg hover:bg-gray-100 transition active:scale-95"
+                          aria-label="Mostrar/Ocultar código"
+                          title="Mostrar/Ocultar">
+                    <svg id="iconMiniEyeOn" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/>
+                      <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  </button>
                 </div>
 
                 <p id="miniError" class="hidden mt-2 text-sm font-semibold text-red-600"></p>
@@ -225,14 +197,9 @@
 
           <div class="h-px bg-gray-200 mx-6"></div>
 
-          <!-- Cerrar sesión -->
           <div class="pt-4 pb-4 flex justify-center">
-            <a
-              href="{% url 'salir' %}"
-              class="bg-red-500 hover:bg-red-600 text-white
-                     font-extrabold px-6 py-2 rounded-lg shadow
-                     transition active:scale-95"
-            >
+            <a href="{% url 'salir' %}"
+               class="bg-red-500 hover:bg-red-600 text-white font-extrabold px-6 py-2 rounded-lg shadow transition active:scale-95">
               Cerrar sesion
             </a>
           </div>
@@ -243,33 +210,128 @@
   </header>
 
   <!-- CUERPO -->
-  <main class="pt-12">
-    <div class="min-h-[calc(100vh-64px)]"></div>
+  <main class="pt-20 pb-12 px-4 md:px-8 ml-20">
+    <div class="max-w-3xl mx-auto">
+
+      <!-- LAYOUT (izq calendario, centro +) -->
+      <div class="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-6 items-start justify-center">
+
+        <!-- IZQ: CALENDARIO/DÍA -->
+        <section class="bg-white rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
+          <div class="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-200">
+            <button id="btnDiaPrev"
+                    class="w-10 h-10 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 transition flex items-center justify-center"
+                    type="button" aria-label="Día anterior" title="Anterior">
+              <span class="text-2xl">←</span>
+            </button>
+
+            <div class="text-center">
+              <p id="fechaCompletaLabel" class="text-sm text-gray-600 font-semibold">02 de febrero de 2026</p>
+              <p id="diaActualLabel" class="text-2xl font-extrabold tracking-wide">LUNES</p>
+            </div>
+
+            <button id="btnDiaNext"
+                    class="w-10 h-10 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 transition flex items-center justify-center"
+                    type="button" aria-label="Día siguiente" title="Siguiente">
+              <span class="text-2xl">→</span>
+            </button>
+          </div>
+
+          <div class="p-4">
+            <div class="rounded-2xl border border-gray-200 overflow-hidden">
+              <div class="grid grid-cols-[1.3fr_.7fr] bg-blue-900 text-white text-sm font-extrabold">
+                <div class="px-3 py-2">LUGAR</div>
+                <div class="px-3 py-2 text-center">HORA</div>
+              </div>
+
+              <div id="tablaCitasBody" class="divide-y divide-gray-200"></div>
+            </div>
+
+            <p id="emptyCitasHint" class="mt-4 text-sm text-gray-500 text-center hidden">
+              No hay citas para este día.
+            </p>
+
+            <p class="mt-4 text-xs text-gray-400 text-center">
+              Tip: usa el botón <b>+</b> para agregar una cita y generar su alarma.
+            </p>
+          </div>
+        </section>
+
+        <!-- BOTÓN + -->
+        <div class="flex justify-center lg:pt-14">
+          <button id="btnAgregarEvento"
+                  type="button"
+                  class="w-16 h-16 rounded-2xl bg-gray-200 hover:bg-gray-300
+                         shadow-lg border border-gray-300
+                         flex items-center justify-center
+                         text-4xl font-extrabold text-gray-700
+                         transition active:scale-95">
+            +
+          </button>
+        </div>
+
+      </div>
+    </div>
   </main>
 
-  <!-- FOOTER -->
   <footer class="fixed bottom-0 left-0 right-0 h-7 bg-blue-900"></footer>
+</div>
 
-</div><!-- /appWrap -->
-
-<!-- CSRF token para AJAX -->
 {% csrf_token %}
 
-<!-- IMPORTANTE: para que la lista cargue al entrar, manda desde views.py "adultos_json" (json.dumps(adultos)) -->
 <script id="adultosIniciales" type="application/json">
   {{ adultos_json|default:"[]"|safe }}
 </script>
 
-<!-- BLOQUEO + MODAL (estilo screenshot) -->
+<!-- ===== MODAL: GENERAR ALARMA DE CITA (ABRE CON +) ===== -->
+<div id="modalCita" class="hidden fixed inset-0 z-[99998]">
+  <div class="absolute inset-0 bg-black/50"></div>
+
+  <div class="relative h-full w-full flex items-center justify-center px-4">
+    <div class="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
+      <div class="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+        <div>
+          <p class="font-extrabold text-lg">Genera una alarma para una cita</p>
+          <p class="text-sm text-gray-500">
+            Fecha seleccionada: <span id="fechaModalInfo" class="font-extrabold"></span>
+          </p>
+        </div>
+        <button id="btnCerrarModalCita" type="button" class="text-xl text-gray-500 hover:text-gray-800">✕</button>
+      </div>
+
+      <form id="formCitaModal" class="p-5 space-y-4">
+        <div>
+          <label class="text-sm font-bold text-gray-700">Lugar:</label>
+          <input id="citaLugarModal"
+                 type="text"
+                 class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                 placeholder="Ej. IMSS / Hospital / Consultorio" />
+        </div>
+
+        <div>
+          <label class="text-sm font-bold text-gray-700">Hora:</label>
+          <input id="citaHoraModal"
+                 type="time"
+                 class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200" />
+          <p class="mt-1 text-xs text-gray-400">Se agregará al día seleccionado.</p>
+        </div>
+
+        <button type="submit"
+                class="w-full bg-blue-900 hover:bg-blue-950 text-white font-extrabold py-2 rounded-xl shadow transition active:scale-95">
+          Crear alarma de cita
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- BLOQUEO + MODAL VINCULO -->
 <div id="overlayVinculo" class="{% if not bloqueado_por_vinculo %}hidden{% endif %} fixed inset-0 z-[99999]">
   <div class="absolute inset-0 bg-black/55"></div>
 
   <div class="relative h-full w-full flex items-center justify-center px-4">
     <div class="w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-gray-200 px-10 py-10 text-center">
-
-      <p class="text-3xl font-extrabold tracking-wide text-gray-900">
-        BIENVENIDO A EVA
-      </p>
+      <p class="text-3xl font-extrabold tracking-wide text-gray-900">BIENVENIDO A EVA</p>
 
       <p class="mt-3 text-lg text-gray-800 leading-snug">
         Ingresa el código único del adulto<br/>mayor que deseas cuidar
@@ -289,7 +351,9 @@
                   class="p-1 rounded-full hover:bg-gray-100 focus:outline-none"
                   aria-label="Mostrar/Ocultar código"
                   title="Mostrar/Ocultar">
-              <circle cx="12" cy="12" r="3"></circle>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/>
+              <circle cx="12" cy="12" r="3"/>
             </svg>
           </button>
         </div>
@@ -309,29 +373,24 @@
                      transition active:scale-95">
         Confirmar
       </button>
-
     </div>
   </div>
 </div>
 
 <script>
-  // ===== Referencias UI =====
+  // ===== Referencias UI (header + perfil + bloqueo) =====
   const btnHistorial = document.getElementById("btnHistorial");
   const modalHistorial = document.getElementById("modalHistorial");
-
   const btnPerfil = document.getElementById("btnPerfil");
   const panelPerfil = document.getElementById("panelPerfil");
-
   const appWrap = document.getElementById("appWrap");
 
-  // Overlay modal principal (bloqueo)
   const overlayVinculo = document.getElementById("overlayVinculo");
   const codigoInput = document.getElementById("codigoInput");
   const toggleCodigo = document.getElementById("toggleCodigo");
   const btnConfirmarCodigo = document.getElementById("btnConfirmarCodigo");
   const codigoError = document.getElementById("codigoError");
 
-  // Mini modal panel perfil
   const btnAddAdulto = document.getElementById("btnAddAdulto");
   const miniModalAddAdulto = document.getElementById("miniModalAddAdulto");
   const btnCerrarMini = document.getElementById("btnCerrarMini");
@@ -340,14 +399,11 @@
   const btnVincularMini = document.getElementById("btnVincularMini");
   const miniError = document.getElementById("miniError");
 
-  // Adulto actual + lista
   const adultosList = document.getElementById("adultosList");
   const adultoActual = document.getElementById("adultoActual");
 
-  // CSRF
   const csrfToken = document.querySelector("input[name=csrfmiddlewaretoken]")?.value || "";
 
-  // ====== Bloqueo total ======
   function setBloqueo(activo) {
     if (!overlayVinculo) return;
     if (activo) {
@@ -361,12 +417,8 @@
     }
   }
 
-  // Si el template llegó bloqueado
-  if (overlayVinculo && !overlayVinculo.classList.contains("hidden")) {
-    setBloqueo(true);
-  }
+  if (overlayVinculo && !overlayVinculo.classList.contains("hidden")) setBloqueo(true);
 
-  // ====== Modales header ======
   function cerrarTodos() {
     modalHistorial?.classList.add("hidden");
     panelPerfil?.classList.add("hidden");
@@ -401,26 +453,18 @@
     if (e.key === "Escape") cerrarTodos();
   });
 
-  // ====== Ojo mostrar/ocultar (modal principal) ======
   toggleCodigo?.addEventListener("click", () => {
     if (!codigoInput) return;
     codigoInput.type = (codigoInput.type === "password") ? "text" : "password";
   });
 
-  // ====== Helpers UI ======
   function openMini() {
     if (!miniModalAddAdulto) return;
-    if (miniError) {
-      miniError.classList.add("hidden");
-      miniError.textContent = "";
-    }
+    if (miniError) { miniError.classList.add("hidden"); miniError.textContent = ""; }
     if (codigoMiniInput) codigoMiniInput.value = "";
     miniModalAddAdulto.classList.remove("hidden");
   }
-
-  function closeMini() {
-    miniModalAddAdulto?.classList.add("hidden");
-  }
+  function closeMini() { miniModalAddAdulto?.classList.add("hidden"); }
 
   function renderAdultoActual(nombre) {
     if (!adultoActual) return;
@@ -457,7 +501,6 @@
       `;
     }).join("");
 
-    // listeners (cambiar adulto)
     adultosList.querySelectorAll("button[data-adulto-id]").forEach(btn => {
       btn.addEventListener("click", async (ev) => {
         ev.stopPropagation();
@@ -467,36 +510,6 @@
     });
   }
 
-  function updateHistorial(medicamentos) {
-    if (!Array.isArray(medicamentos)) return;
-    const p5 = modalHistorial?.querySelector(".p-5");
-    if (!p5) return;
-
-    if (medicamentos.length === 0) {
-      p5.innerHTML = `
-        <div class="h-40 flex flex-col items-center justify-center text-center gap-2">
-          <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-2xl">🗂️</div>
-          <p class="font-extrabold text-gray-800">Aún no hay historial</p>
-          <p class="text-sm text-gray-500">Aquí aparecerán el historial de los medicamentos.</p>
-        </div>
-      `;
-      return;
-    }
-
-    p5.innerHTML = `
-      <div class="space-y-3 max-h-64 overflow-auto pr-1">
-        ${medicamentos.map(m => `
-          <div class="p-3 rounded-xl border border-gray-200 bg-gray-50">
-            <p class="font-extrabold text-gray-900">${m.nombre || ""}</p>
-            <p class="text-sm text-gray-600">${m.descripcion || ""}</p>
-            <p class="text-xs text-gray-400 mt-1">Confianza: ${(Number(m.confianza || 0)).toFixed(2)}</p>
-          </div>
-        `).join("")}
-      </div>
-    `;
-  }
-
-  // ====== Acciones backend ======
   async function postForm(url, formData) {
     const resp = await fetch(url, {
       method: "POST",
@@ -507,7 +520,6 @@
     return { resp, data };
   }
 
-  // ====== Vincular (modal bloqueo inicial) ======
   async function vincularDesdeOverlay() {
     const codigo = (codigoInput?.value || "").trim().toUpperCase();
     if (!codigoError) return;
@@ -536,12 +548,8 @@
         return;
       }
 
-      // UI updates
       renderAdultoActual(data.adulto?.nombre || "");
       renderListaAdultos(data.adultos || []);
-      updateHistorial(data.medicamentos || []);
-
-      // Desbloquear app
       setBloqueo(false);
 
     } catch (e) {
@@ -555,25 +563,15 @@
 
   btnConfirmarCodigo?.addEventListener("click", vincularDesdeOverlay);
   codigoInput?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      vincularDesdeOverlay();
-    }
+    if (e.key === "Enter") { e.preventDefault(); vincularDesdeOverlay(); }
   });
 
-  // ====== Vincular (mini modal dentro del panel) ======
   async function vincularDesdeMini() {
     const codigo = (codigoMiniInput?.value || "").trim().toUpperCase();
-    if (miniError) {
-      miniError.classList.add("hidden");
-      miniError.textContent = "";
-    }
+    if (miniError) { miniError.classList.add("hidden"); miniError.textContent = ""; }
 
     if (!codigo) {
-      if (miniError) {
-        miniError.textContent = "Ingresa el código único.";
-        miniError.classList.remove("hidden");
-      }
+      if (miniError) { miniError.textContent = "Ingresa el código único."; miniError.classList.remove("hidden"); }
       return;
     }
 
@@ -587,24 +585,15 @@
       const { data } = await postForm("{% url 'vincular_adulto_por_codigo' %}", form);
 
       if (!data.ok) {
-        if (miniError) {
-          miniError.textContent = data.error || "Código inválido.";
-          miniError.classList.remove("hidden");
-        }
+        if (miniError) { miniError.textContent = data.error || "Código inválido."; miniError.classList.remove("hidden"); }
         return;
       }
 
-      // UI updates
       renderAdultoActual(data.adulto?.nombre || "");
       renderListaAdultos(data.adultos || []);
-      updateHistorial(data.medicamentos || []);
-
       closeMini();
     } catch (e) {
-      if (miniError) {
-        miniError.textContent = "Error de conexión. Intenta de nuevo.";
-        miniError.classList.remove("hidden");
-      }
+      if (miniError) { miniError.textContent = "Error de conexión. Intenta de nuevo."; miniError.classList.remove("hidden"); }
     } finally {
       btnVincularMini.disabled = false;
       btnVincularMini.textContent = "Vincular";
@@ -615,70 +604,194 @@
     try {
       const form = new FormData();
       form.append("adulto_id", adultoId);
-
       const { data } = await postForm("{% url 'cambiar_adulto_actual' %}", form);
-
       if (!data.ok) return;
-
       renderAdultoActual(data.adulto?.nombre || "");
       renderListaAdultos(data.adultos || []);
-      updateHistorial(data.medicamentos || []);
-    } catch (e) {
-      // silencioso
-    }
+    } catch (e) {}
   }
 
-  // ====== Eventos mini modal ======
-btnAddAdulto?.addEventListener("click", (e) => {
-  e.stopPropagation();
-  openMini(); // aquí ya resetea password + iconos
-});
+  btnAddAdulto?.addEventListener("click", (e) => { e.stopPropagation(); openMini(); });
+  btnCerrarMini?.addEventListener("click", closeMini);
+  miniModalAddAdulto?.addEventListener("click", (e) => { if (e.target === miniModalAddAdulto) closeMini(); });
 
-btnCerrarMini?.addEventListener("click", closeMini);
+  toggleMiniCodigo?.addEventListener("click", () => {
+    if (!codigoMiniInput) return;
+    const estabaVisible = (codigoMiniInput.type === "text");
+    codigoMiniInput.type = estabaVisible ? "password" : "text";
+  });
 
-miniModalAddAdulto?.addEventListener("click", (e) => {
-  if (e.target === miniModalAddAdulto) closeMini();
-});
+  btnVincularMini?.addEventListener("click", vincularDesdeMini);
+  codigoMiniInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); vincularDesdeMini(); }
+  });
 
-toggleMiniCodigo?.addEventListener("click", () => {
-  if (!codigoMiniInput) return;
-
-  const estabaVisible = (codigoMiniInput.type === "text");
-  codigoMiniInput.type = estabaVisible ? "password" : "text";
-
-  // Si ahora está visible => mostrar ojo normal
-  // Si ahora está oculto => mostrar ojo tachado
-  if (iconMiniEyeOff && iconMiniEyeOn) {
-    iconMiniEyeOff.classList.toggle("hidden", !estabaVisible); // si estaba visible, ahora oculto => tachado visible
-    iconMiniEyeOn.classList.toggle("hidden", estabaVisible);   // si estaba visible, ahora oculto => ojo normal hidden
-  }
-});
-
-btnVincularMini?.addEventListener("click", vincularDesdeMini);
-
-codigoMiniInput?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    vincularDesdeMini();
-  }
-});
-
-  // ====== Inicializar lista desde servidor ======
   (function initAdultos() {
     const el = document.getElementById("adultosIniciales");
     if (!el) return;
-
     try {
       const adultos = JSON.parse(el.textContent || "[]");
       renderListaAdultos(adultos);
-
-      // si hay uno activo, asegura que el "adultoActual" muestre el activo
       const activo = Array.isArray(adultos) ? adultos.find(a => a.activo) : null;
       if (activo && activo.nombre) renderAdultoActual(activo.nombre);
-    } catch (e) {
-      // si falla el JSON, no revienta
-    }
+    } catch (e) {}
   })();
+</script>
+
+<script>
+  // =============================
+  // CALENDARIO + CITAS (solo modal)
+  // =============================
+
+  const DIAS = ["DOMINGO","LUNES","MARTES","MIÉRCOLES","JUEVES","VIERNES","SÁBADO"];
+  const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+
+  let selectedDate = new Date();
+
+  const diaActualLabel = document.getElementById("diaActualLabel");
+  const fechaCompletaLabel = document.getElementById("fechaCompletaLabel");
+  const btnDiaPrev = document.getElementById("btnDiaPrev");
+  const btnDiaNext = document.getElementById("btnDiaNext");
+
+  const tablaCitasBody = document.getElementById("tablaCitasBody");
+  const emptyCitasHint = document.getElementById("emptyCitasHint");
+
+  const btnAgregarEvento = document.getElementById("btnAgregarEvento");
+
+  // Modal refs
+  const modalCita = document.getElementById("modalCita");
+  const btnCerrarModalCita = document.getElementById("btnCerrarModalCita");
+  const fechaModalInfo = document.getElementById("fechaModalInfo");
+  const formCitaModal = document.getElementById("formCitaModal");
+  const citaLugarModal = document.getElementById("citaLugarModal");
+  const citaHoraModal = document.getElementById("citaHoraModal");
+
+  function pad2(n){ return String(n).padStart(2,"0"); }
+  function ymd(date){ return `${date.getFullYear()}-${pad2(date.getMonth()+1)}-${pad2(date.getDate())}`; }
+  function fechaLarga(date){ return `${pad2(date.getDate())} de ${MESES[date.getMonth()]} de ${date.getFullYear()}`; }
+
+  function renderFecha() {
+    const d = selectedDate;
+    if (diaActualLabel) diaActualLabel.textContent = DIAS[d.getDay()];
+    if (fechaCompletaLabel) fechaCompletaLabel.textContent = fechaLarga(d);
+    if (fechaModalInfo) fechaModalInfo.textContent = fechaLarga(d);
+  }
+
+  function addDays(date, n) {
+    const copy = new Date(date);
+    copy.setDate(copy.getDate() + n);
+    return copy;
+  }
+
+  function storageKey() {
+    return `eva_citas_${ymd(selectedDate)}`;
+  }
+
+  function loadDayData() {
+    try { return JSON.parse(localStorage.getItem(storageKey()) || '{"citas":[]}'); }
+    catch { return { citas: [] }; }
+  }
+
+  function saveDayData(data) {
+    localStorage.setItem(storageKey(), JSON.stringify(data));
+  }
+
+  function renderTablaCalendario() {
+    const data = loadDayData();
+    const citas = Array.isArray(data.citas) ? data.citas : [];
+
+    if (!tablaCitasBody) return;
+
+    if (citas.length === 0) {
+      tablaCitasBody.innerHTML = "";
+      emptyCitasHint?.classList.remove("hidden");
+      return;
+    }
+
+    emptyCitasHint?.classList.add("hidden");
+    citas.sort((a,b) => (a.hora||"").localeCompare(b.hora||""));
+
+    tablaCitasBody.innerHTML = citas.map((c, idx) => `
+      <div class="grid grid-cols-[1.3fr_.7fr] items-center text-sm">
+        <div class="px-3 py-2 font-semibold text-gray-800 truncate" title="${(c.lugar||"").replaceAll('"',"'")}">
+          ${c.lugar || "Cita"}
+        </div>
+        <div class="px-3 py-2 text-center text-gray-700 flex items-center justify-center gap-2">
+          <span>${c.hora || "--:--"}</span>
+          <button type="button" data-del="${idx}"
+                  class="ml-1 text-xs font-extrabold px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100 active:scale-95 transition">
+            ✕
+          </button>
+        </div>
+      </div>
+    `).join("");
+
+    tablaCitasBody.querySelectorAll("button[data-del]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const i = Number(btn.getAttribute("data-del"));
+        const d = loadDayData();
+        d.citas = (d.citas || []).filter((_, k) => k !== i);
+        saveDayData(d);
+        renderTablaCalendario();
+      });
+    });
+  }
+
+  function setSelectedDate(date) {
+    selectedDate = date;
+    renderFecha();
+    renderTablaCalendario();
+  }
+
+  btnDiaPrev?.addEventListener("click", () => setSelectedDate(addDays(selectedDate, -1)));
+  btnDiaNext?.addEventListener("click", () => setSelectedDate(addDays(selectedDate, 1)));
+
+  // Modal open/close
+  function openModalCita() {
+    renderFecha();
+    citaLugarModal.value = "";
+    citaHoraModal.value = "";
+    modalCita.classList.remove("hidden");
+    document.body.classList.add("overflow-hidden");
+    setTimeout(() => citaLugarModal?.focus(), 50);
+  }
+
+  function closeModalCita() {
+    modalCita.classList.add("hidden");
+    document.body.classList.remove("overflow-hidden");
+  }
+
+  btnAgregarEvento?.addEventListener("click", openModalCita);
+  btnCerrarModalCita?.addEventListener("click", closeModalCita);
+  modalCita?.addEventListener("click", (e) => { if (e.target === modalCita) closeModalCita(); });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modalCita && !modalCita.classList.contains("hidden")) closeModalCita();
+  });
+
+  // Guardar cita desde el modal
+  formCitaModal?.addEventListener("submit", (e) => {
+    e.preventDefault();
+
+    const lugar = (citaLugarModal?.value || "").trim();
+    const hora = (citaHoraModal?.value || "").trim();
+
+    if (!lugar || !hora) {
+      alert("Llena Lugar y Hora.");
+      return;
+    }
+
+    const d = loadDayData();
+    d.citas = Array.isArray(d.citas) ? d.citas : [];
+    d.citas.push({ lugar, hora });
+    saveDayData(d);
+
+    renderTablaCalendario();
+    closeModalCita();
+  });
+
+  // Init
+  setSelectedDate(new Date());
 </script>
 
 </body>

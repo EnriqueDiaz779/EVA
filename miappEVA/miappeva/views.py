@@ -32,13 +32,30 @@ from .models import PushSubscription
 import secrets
 import string
 from django.views.decorators.http import require_POST
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
 
-try:
-    from pywebpush import webpush, WebPushException
-except Exception as e:
-    print("⚠️ WebPush desactivado (cryptography/DLL):", e)
-    webpush = None
-    WebPushException = Exception
+@require_POST
+def crear_alarmas_receta(request):
+    """
+    Espera JSON con:
+    {
+      "fecha": "YYYY-MM-DD",
+      "items": [{"nombre":"Ambroxol","dosis":"2","hora":"13:00"}, ...]
+    }
+    """
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+        fecha = payload.get("fecha")
+        items = payload.get("items", [])
+
+        # TODO: aquí guardas en tu BD (Alarmas/Citas) según tu modelo
+        # Por ahora solo regresamos ok
+        return JsonResponse({"ok": True, "fecha": fecha, "count": len(items)})
+
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=400)
 
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
