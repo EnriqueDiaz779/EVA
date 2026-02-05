@@ -34,7 +34,7 @@
   <meta name="theme-color" content="#2563EB">
 </head>
 
-<body class="min-h-screen flex flex-col items-center bg-gray-200 justify-center text-gray-900 text-2xl leading-relaxed">
+<body class="min-h-screen flex flex-col bg-gray-200 text-gray-900 text-2xl leading-relaxed">
 
 <!-- HEADER -->
 <header class="fixed top-0 left-0 right-0 h-16 bg-blue-900 text-white flex items-center justify-between px-6 shadow-md text-2xl z-50">
@@ -43,44 +43,52 @@
     <span class="text-3xl font-extrabold tracking-wide">EVA</span>
   </div>
 
-  <div class="flex items-center gap-4">
-    <!-- Botón Alarmas -->
-    <button id="btnAlarmas"
-      class="flex items-center justify-center gap-2
-             bg-green-500 hover:bg-green-700
-             text-white font-bold
-             px-3 py-1 rounded-lg shadow
-             text-lg transition
-             hover:scale-105 active:scale-95
-             focus:outline-none focus:ring-2 focus:ring-green-300">
-      <span class="text-2xl">🕒</span>
-      <span>Alarmas</span>
-    </button>
+ <div class="flex items-center gap-2 sm:gap-4">
 
-    <!-- Botón Salir -->
-    <form action="{% url 'salir' %}" method="post" class="m-0">
-      {% csrf_token %}
-      <button
-        class="bg-red-500 hover:bg-red-600
-               text-white font-bold
-               px-4 py-2 rounded-lg shadow
-               text-lg transition
-               hover:scale-105 active:scale-95
-               focus:outline-none focus:ring-2 focus:ring-red-300">
-        Salir
-      </button>
-    </form>
-  </div>
+  <!-- Botón Alarmas -->
+  <button id="btnAlarmas"
+    class="flex items-center justify-center gap-2
+           bg-green-500 hover:bg-green-700
+           text-white font-bold
+           px-3 py-1
+           rounded-lg shadow
+           text-lg
+           transition
+           hover:scale-105 active:scale-95
+           focus:outline-none focus:ring-2 focus:ring-green-300">
+
+    <span class="text-2xl">🕒</span>
+    <span class="hidden sm:inline">Alarmas</span>
+  </button>
+
+  <!-- Botón Salir -->
+  <form action="{% url 'salir' %}" method="post" class="m-0">
+    {% csrf_token %}
+    <button
+      class="bg-red-500 hover:bg-red-600
+             text-white font-bold
+             px-4 py-2
+             rounded-lg shadow
+             text-lg
+             transition
+             hover:scale-105 active:scale-95
+             focus:outline-none focus:ring-2 focus:ring-red-300">
+      Salir
+    </button>
+  </form>
+</div>
 </header>
+<div class="flex-1 flex flex-col items-center justify-center">
 
   <!-- MAIN -->
-  <main class="mt-20 w-[98%] max-w-5xl bg-white p-12 rounded-3xl shadow-xl border text-center space-y-12 overflow-hidden">
+  <main class="mt-20 w-[98%] max-w-6xl bg-white p-12 rounded-3xl shadow-xl border text-center space-y-12 overflow-hidden">
     <div id="estado" class="px-8 py-4 rounded-full bg-gray-100 text-gray-700 font-bold text-3xl shadow-md">
       EVA esta lista para ayudarte.
     </div>
 
-     <!-- Contenedor de botones centrados y responsive -->
-<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-12 justify-items-center">
+    <!-- Contenedor responsive -->
+<div class="grid grid-cols-1 sm:grid-cols-4 gap-12 justify-items-center">
+
   <!-- Micrófono -->
   <div class="flex flex-col items-center">
     <img id="btnHablar"
@@ -93,10 +101,10 @@
   <!-- Cámara -->
   <div class="flex flex-col items-center">
     <img id="btnCamara"
-         src="{% static 'miapp/img/camara2.png' %}"
+         src="{% static 'miapp/img/medicamento.png' %}"
          alt="Escanear medicamento"
          class="w-60 h-60 md:w-56 md:h-56 cursor-pointer transition-transform transform hover:scale-110 active:scale-95 drop-shadow-2xl">
-    <p class="mt-4 text-2xl font-bold text-gray-700 md:hidden">Escanear</p>
+    <p class="mt-4 text-2xl font-bold text-gray-700 md:hidden">Lector Medicamentos</p>
   </div>
 
   <!-- Alarma -->
@@ -107,16 +115,16 @@
          class="w-60 h-60 md:w-56 md:h-56 cursor-pointer transition-transform transform hover:scale-110 active:scale-95 drop-shadow-2xl">
     <p class="mt-4 text-2xl font-bold text-gray-700 md:hidden">Alarma</p>
   </div>
-</div>
 
-<!-- Lector receta -->
- <div class="flex flex-col items-center">
+  <!-- Lector receta -->
+  <div class="flex flex-col items-center">
     <img id="btnLectorReceta"
-         src="{% static 'miapp/img/lector.png' %}"
+         src="{% static 'miapp/img/receta.png' %}"
          alt="Lector receta" title="Presione para reconocer su receta"
          class="w-60 h-60 md:w-56 md:h-56 cursor-pointer transition-transform transform hover:scale-110 active:scale-95 drop-shadow-2xl">
-    <p class="mt-4 text-2xl font-bold text-gray-700 md:hidden">Lector receta</p>
+    <p class="mt-4 text-2xl font-bold text-gray-700 md:hidden">Lector Receta</p>
   </div>
+</div>
 
 <!-- Respuesta IA (se mantiene fuera del contenedor) -->
 <div id="respuestaIA" class="hidden mt-10">
@@ -126,38 +134,65 @@
     <span id="textoRespuesta"></span>
   </div>
 </div>
+</main>
+</div>  
 
-  <footer class="fixed bottom-0 left-0 right-0 h-4 bg-blue-600"></footer>
-
-<!-- PANEL DE ALARMAS (FIJO Y CON SCROLL INTERNO) -->
+<!-- PANEL DE ALARMAS (RESPONSIVE) -->
 <div id="panelAlarmas"
-     class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-3 md:p-8">
-  <div class="bg-white rounded-[3rem] shadow-2xl 
-              w-full max-w-5xl h-[90vh] 
-              p-6 md:p-12 flex flex-col relative">
+     class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm
+            flex items-center justify-center z-50
+            p-2 sm:p-4 md:p-8">
+
+  <div class="bg-white rounded-3xl md:rounded-[3rem] shadow-2xl
+              w-full max-w-5xl
+              h-[95vh] md:h-[90vh]
+              p-4 sm:p-6 md:p-12
+              flex flex-col relative">
 
     <!-- ENCABEZADO -->
-    <div class="flex justify-between items-center border-b-4 border-blue-400 pb-6 mb-6 flex-shrink-0">
-      <h2 class="text-4xl md:text-6xl font-extrabold text-gray-900 flex items-center gap-3">
-        🕒 <span>Tus alarmas</span>
+    <div class="flex items-center justify-between
+                border-b-2 md:border-b-4 border-blue-400
+                pb-4 md:pb-6 mb-4 md:mb-6 flex-shrink-0">
+
+      <h2 class="text-2xl sm:text-3xl md:text-6xl
+                 font-extrabold text-gray-900 text-center flex-1">
+        Tus alarmas
       </h2>
+
       <button id="cerrarPanel"
-              class="text-gray-500 hover:text-black text-6xl font-extrabold transition transform hover:scale-110">&times;</button>
+              class="text-gray-500 hover:text-black
+                     text-3xl sm:text-4xl md:text-6xl
+                     font-extrabold transition
+                     transform hover:scale-110 ml-2">
+        &times;
+      </button>
     </div>
 
-
-    <div class="mb-5 flex justify-end">
+    <!-- BOTÓN ELIMINAR TODAS -->
+    <div class="mb-4 md:mb-5 flex justify-center md:justify-end">
       <button id="btnEliminarTodasAlarmas"
-              class="bg-red-700 hover:bg-red-800 text-white font-extrabold text-xl md:text-2xl px-6 py-3 rounded-2xl shadow-md transition transform hover:scale-105 active:scale-95">
+              class="w-full md:w-auto
+                     bg-red-700 hover:bg-red-800
+                     text-white font-extrabold
+                     text-base sm:text-lg md:text-2xl
+                     px-4 sm:px-6 py-2 sm:py-3
+                     rounded-xl md:rounded-2xl
+                     shadow-md transition
+                     transform hover:scale-105 active:scale-95">
         Eliminar todas
       </button>
     </div>
+
     <!-- LISTA DE ALARMAS -->
     <ul id="listaAlarmas"
-        class="flex-1 overflow-y-auto space-y-8 md:space-y-10 
-               text-gray-800 text-3xl md:text-4xl font-semibold px-2 
-               scrollbar-thin scrollbar-thumb-blue-400 scrollbar-track-blue-100 rounded-2xl">
-      <!-- Se llena dinámicamente con JS -->
+        class="flex-1 overflow-y-auto
+               space-y-4 sm:space-y-6 md:space-y-10
+               text-gray-800
+               text-lg sm:text-2xl md:text-4xl
+               font-semibold px-1 sm:px-2
+               scrollbar-thin scrollbar-thumb-blue-400 scrollbar-track-blue-100
+               rounded-xl md:rounded-2xl">
+      <!-- JS -->
     </ul>
   </div>
 </div>
@@ -307,9 +342,6 @@
     </div>
   </div>
 </div>
-
-<footer class="fixed bottom-0 left-0 right-0 h-4 bg-blue-900"></footer>
-
 
   <!-- SCRIPT -->
   <script>
@@ -874,28 +906,44 @@ async function cargarAlarmas() {
   data.alarmas.forEach(a => {
     const li = document.createElement("li");
     li.className = `
-      flex flex-col md:flex-row justify-between items-center 
-      bg-yellow-100 border-4 border-yellow-300 
-      p-6 md:p-8 rounded-[2rem] shadow-lg 
-      hover:shadow-xl transition-all duration-300
-    `;
+  flex flex-col sm:flex-row sm:items-center sm:justify-between
+  gap-3 sm:gap-6
+  bg-yellow-100 border-2 sm:border-4 border-yellow-300
+  p-3 sm:p-6 md:p-8
+  rounded-2xl sm:rounded-[2rem]
+  shadow-md sm:shadow-lg
+  hover:shadow-xl transition-all duration-300
+`;
 
-    li.innerHTML = `
-      <div class="flex flex-col items-center md:items-start space-y-3 text-center md:text-left w-full md:w-auto">
-        <p class="text-5xl md:text-6xl font-extrabold text-blue-700">⏰ ${a.hora}</p>
-        <p class="text-gray-900 text-3xl md:text-4xl font-bold">${a.mensaje}</p>
-        ${a.dias ? `<p class="text-blue-700 text-2xl md:text-3xl font-semibold mt-2">📅 ${a.dias}</p>` : ""}
-      </div>
+li.innerHTML = `
+  <div class="w-full sm:w-auto text-center sm:text-left">
+    <p class="text-2xl sm:text-4xl md:text-6xl font-extrabold text-blue-700">
+      ⏰ ${a.hora}
+    </p>
 
-      <button 
-        class="bg-red-600 hover:bg-red-700 text-white 
-               font-extrabold text-3xl md:text-4xl 
-               py-4 px-10 mt-6 md:mt-0 rounded-[2rem] shadow-md 
-               transition transform hover:scale-105 active:scale-95"
-        onclick="eliminarAlarma(${a.id})">
-        Eliminar
-      </button>
-    `;
+    <p class="text-gray-900 text-lg sm:text-2xl md:text-4xl font-bold leading-snug mt-1">
+      ${a.mensaje}
+    </p>
+
+    ${a.dias ? `
+      <p class="text-blue-700 text-base sm:text-xl md:text-3xl font-semibold mt-1">
+        📅 ${a.dias}
+      </p>` : ""}
+  </div>
+
+  <button
+    class="w-full sm:w-auto
+           bg-red-600 hover:bg-red-700 text-white
+           font-extrabold
+           text-base sm:text-xl md:text-4xl
+           py-2 sm:py-3 md:py-4
+           px-4 sm:px-8 md:px-10
+           rounded-xl sm:rounded-2xl md:rounded-[2rem]
+           shadow-md transition transform hover:scale-105 active:scale-95"
+    onclick="eliminarAlarma(${a.id})">
+    Eliminar
+  </button>
+`;
 
     lista.appendChild(li);
   });
@@ -1220,66 +1268,68 @@ if ("serviceWorker" in navigator) {
 </div>
 
 {% if codigo_unico %}
-<div class="fixed left-6 bottom-6 z-[9999]">
-  <div class="flex items-center gap-4 
-              bg-white border border-gray-300 
-              rounded-xl px-5 py-3 shadow-md">
+<div class="w-full relative z-10">
+  <div class="flex justify-start px-2 sm:px-6 mt-3 sm:mt-4 mb-2 sm:mb-3">
+    <div class="inline-flex items-center gap-2 sm:gap-4
+                bg-white border border-gray-300
+                rounded-lg sm:rounded-xl
+                px-3 py-2 sm:px-5 sm:py-3
+                shadow-md">
 
-    <span class="text-gray-800 text-lg font-semibold">
-      Código único
-    </span>
+      <span class="text-gray-800 text-sm sm:text-lg font-semibold">
+        Código único
+      </span>
 
-    <!-- Texto del código -->
-    <span id="codigoUnicoTexto"
-          class="font-mono text-lg tracking-widest text-gray-900 select-none">
-      **********
-    </span>
+      <span id="codigoUnicoTexto"
+            class="font-mono text-sm sm:text-lg tracking-widest text-gray-900 select-none">
+        **********
+      </span>
 
-    <!-- Código real oculto -->
-    <input type="hidden" id="codigoUnicoReal" value="{{ codigo_unico }}">
+      <input type="hidden" id="codigoUnicoReal" value="{{ codigo_unico }}">
 
-    <!-- Botón mostrar / ocultar -->
-    <button id="btnToggleCodigo"
-            type="button"
-            class="p-2 rounded-full 
-                   hover:bg-gray-100 
-                   focus:outline-none focus:ring-2 focus:ring-blue-400
-                   transition"
-            aria-label="Mostrar u ocultar código">
-      
-      <!-- ICONO OJO (SVG profesional) -->
-      <svg id="iconEyeOpen"
-           xmlns="http://www.w3.org/2000/svg"
-           class="h-6 w-6 text-gray-600"
-           fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M2.458 12C3.732 7.943 7.523 5 12 5
-                 c4.477 0 8.268 2.943 9.542 7
-                 -1.274 4.057-5.065 7-9.542 7
-                 -4.477 0-8.268-2.943-9.542-7z" />
-      </svg>
+      <button id="btnToggleCodigo"
+              type="button"
+              class="p-1.5 sm:p-2 rounded-full
+                     hover:bg-gray-100
+                     focus:outline-none focus:ring-2 focus:ring-blue-400
+                     transition"
+              aria-label="Mostrar u ocultar código">
 
-      <!-- ICONO OJO CERRADO -->
-      <svg id="iconEyeClosed"
-           xmlns="http://www.w3.org/2000/svg"
-           class="h-6 w-6 text-gray-600 hidden"
-           fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M13.875 18.825A10.05 10.05 0 0112 19
-                 c-4.478 0-8.269-2.943-9.543-7
-                 a9.97 9.97 0 012.146-3.568M6.223 6.223
-                 A9.956 9.956 0 0112 5
-                 c4.477 0 8.268 2.943 9.542 7
-                 a9.964 9.964 0 01-4.293 5.774M15 12
-                 a3 3 0 00-3-3m0 0a3 3 0 013 3m-3-3
-                 L3 21m18-18l-6 6" />
-      </svg>
-    </button>
+        <svg id="iconEyeOpen"
+             xmlns="http://www.w3.org/2000/svg"
+             class="h-5 w-5 sm:h-6 sm:w-6 text-gray-600"
+             fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M2.458 12C3.732 7.943 7.523 5 12 5
+                   c4.477 0 8.268 2.943 9.542 7
+                   -1.274 4.057-5.065 7-9.542 7
+                   -4.477 0-8.268-2.943-9.542-7z" />
+        </svg>
+
+        <svg id="iconEyeClosed"
+             xmlns="http://www.w3.org/2000/svg"
+             class="h-5 w-5 sm:h-6 sm:w-6 text-gray-600 hidden"
+             fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M13.875 18.825A10.05 10.05 0 0112 19
+                   c-4.478 0-8.269-2.943-9.543-7
+                   a9.97 9.97 0 012.146-3.568M6.223 6.223
+                   A9.956 9.956 0 0112 5
+                   c4.477 0 8.268 2.943 9.542 7
+                   a9.964 9.964 0 01-4.293 5.774M15 12
+                   a3 3 0 00-3-3m0 0a3 3 0 013 3m-3-3
+                   L3 21m18-18l-6 6" />
+        </svg>
+      </button>
+
+    </div>
   </div>
 </div>
 {% endif %}
+
+<footer class="h-4 bg-blue-900 w-full"></footer>
 
 <script>
 (() => {
