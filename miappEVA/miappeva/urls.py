@@ -36,6 +36,7 @@ urlpatterns = [
     path("alarmas/reprogramar/", views.reprogramar_alarma, name="reprogramar_alarma"),
     path("api/alarmas/", views.obtener_alarmas, name="obtener_alarmas"),
     path("api/alarmas/eliminar/", views.eliminar_alarma_ajax, name="eliminar_alarma_ajax"),
+    path("api/alarmas/eliminar-todas/", views.eliminar_todas_alarmas_ajax, name="eliminar_todas_alarmas_ajax"),
 
     # --- Cámara / Escáner ---
     path("upload-temporal/", views.upload_temporal, name="upload_temporal"),

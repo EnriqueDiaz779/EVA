@@ -145,6 +145,13 @@
               class="text-gray-500 hover:text-black text-6xl font-extrabold transition transform hover:scale-110">&times;</button>
     </div>
 
+
+    <div class="mb-5 flex justify-end">
+      <button id="btnEliminarTodasAlarmas"
+              class="bg-red-700 hover:bg-red-800 text-white font-extrabold text-xl md:text-2xl px-6 py-3 rounded-2xl shadow-md transition transform hover:scale-105 active:scale-95">
+        Eliminar todas
+      </button>
+    </div>
     <!-- LISTA DE ALARMAS -->
     <ul id="listaAlarmas"
         class="flex-1 overflow-y-auto space-y-8 md:space-y-10 
@@ -158,8 +165,8 @@
   <!-- MODAL CÁMARA -->
 <div id="modalCamara" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center z-50">
   <div class="bg-white rounded-3xl shadow-2xl w-[98%] max-w-5xl h-[90vh] p-4 md:p-10 flex flex-col relative overflow-hidden">
-    <h2 class="text-3xl md:text-5xl font-extrabold text-center text-gray-800 mb-4">
-      Toma una foto de tu medicamento
+    <h2 id="tituloModalCamara" class="text-3xl md:text-5xl font-extrabold text-center text-gray-800 mb-4">
+      Toma una foto de tu receta
     </h2>
 
     <!-- Contenedor de vista -->
@@ -435,10 +442,10 @@
       async function crearAlarmaDesdeVoz(meta) {
         const token = document.querySelector('meta[name="csrf-token"]').content;
         const hora = meta.hora || "";
-        const mensaje = meta.mensaje || "¡Es hora de tu alarma!";
+        const mensaje = meta.mensaje || "Es hora de tu alarma!";
 
         if (!hora) {
-          mostrarNoEntendido("No entendí la hora. ¿Podrías repetir a qué hora pongo la alarma?");
+          mostrarNoEntendido("No entendi la hora. Podrias repetir a que hora pongo la alarma?");
           return;
         }
 
@@ -488,7 +495,7 @@
           "mx-auto max-w-2xl bg-red-100 border-4 border-red-400 text-red-900 text-3xl font-bold p-8 rounded-3xl shadow-lg text-center";
         textoRespuesta.textContent = texto;
         hablar(texto);
-        setEstado("Orden cancelada. Listo para escuchar otra instrucción.", "gray");
+        setEstado("Orden cancelada. Listo para escuchar otra instruccion.", "gray");
       }
     }
 
@@ -504,22 +511,22 @@
 
         for (const alarma of data.alarmas) {
           
-          const mensaje = alarma.mensaje || "¡Es hora de tu alarma!";
-          console.log("🔔 Alarma disparada:", mensaje);
+          const mensaje = alarma.mensaje || "Es hora de tu alarma!";
+          console.log("Alarma disparada:", mensaje);
           alarmaEnCurso = true;
-          hablar("¡Es hora de tu alarma! " + mensaje);
+          hablar("Es hora de tu alarma! " + mensaje);
           const audio = new Audio('/static/miapp/sonidos/alarma.mp3');
           audio.play();
 
           await mostrarNotificacionSW({
           type: "SHOW_NOTIFICATION",
-          title: "⏰ EVA",
+          title: "EVA",
           body: mensaje,
           id: alarma.id,
           tag: "eva-alarma-" + alarma.id
         });
 
-          setEstado("🔔 " + mensaje, "blue");
+          setEstado(mensaje, "blue");
           await new Promise(resolve => setTimeout(resolve, 8000));
 
           const token = document.querySelector("meta[name='csrf-token']").content;
@@ -551,10 +558,10 @@
     }
     try {
       const reg = await navigator.serviceWorker.register("/service-worker.js", { scope: "/" });
-      console.log("✅ SW registrado:", reg);
+      console.log("SW registrado:", reg);
       return reg;
     } catch (err) {
-      console.error("❌ Error registrando SW:", err);
+      console.error("Error registrando SW:", err);
       return null;
     }
   }
@@ -568,7 +575,7 @@
     if (permiso === "default") {
       permiso = await Notification.requestPermission();
     }
-    console.log("🔔 Permiso de notificaciones:", permiso);
+    console.log("Permiso de notificaciones:", permiso);
     return permiso;
   }
 
@@ -599,11 +606,11 @@
   })();
   </script>
 
-  <script>
+<script>
 (() => {
-  // Elementos
   const modal = document.getElementById('modalCamara');
   const btnOpen = document.getElementById('btnCamara');
+  const btnLectorReceta = document.getElementById('btnLectorReceta');
   const btnCancelar = document.getElementById('btnCancelarCam');
   const btnTomar = document.getElementById('btnTomarFoto');
   const btnAceptar = document.getElementById('btnAceptarFoto');
@@ -612,13 +619,13 @@
   const inputCapture = document.getElementById('inputCapture');
   const placeholder = document.getElementById('placeholderCam');
   const btnRepetir = document.getElementById('btnRepetirFoto');
+  const tituloModalCamara = document.getElementById('tituloModalCamara');
 
+  let stream = null;
+  let fotoListo = false;
+  let modo = null;
+  let objetivoEscaneo = 'medicamento';
 
-  let stream = null;    // MediaStream de getUserMedia
-  let fotoListo = false; // ¿ya hay captura en canvas?
-  let modo = null;      // 'A' (getUserMedia) | 'B' (input capture)
-
-  // Helpers
   function show(el) { el.classList.remove('hidden'); }
   function hide(el) { el.classList.add('hidden'); }
 
@@ -628,17 +635,20 @@
     show(placeholder);
     hide(video);
     hide(canvas);
-    // inputCapture se muestra solo si estamos en modo B
-    inputCapture.value = "";
+    inputCapture.value = '';
   }
 
   async function abrirModalCamara() {
     modal.classList.remove('hidden');
     modal.classList.add('flex');
     resetUI();
+    if (tituloModalCamara) {
+      tituloModalCamara.textContent = objetivoEscaneo === 'receta'
+        ? 'Toma una foto de tu receta'
+        : 'Toma una foto de tu medicamento';
+    }
 
-    // Decidir modo
-    const isSecure = window.isSecureContext; // HTTPS o localhost
+    const isSecure = window.isSecureContext;
     const canMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 
     if (isSecure && canMedia) {
@@ -649,39 +659,38 @@
       iniciarInputCapture();
     }
 
-    hablar("Coloca el medicamento frente a la cámara y presiona el botón amarillo para tomar la foto.");
+    if (objetivoEscaneo === 'receta') {
+      hablar('Coloca la receta frente a la camara y presiona el boton amarillo para tomar la foto.');
+    } else {
+      hablar('Coloca el medicamento frente a la camara y presiona el boton amarillo para tomar la foto.');
+    }
   }
 
   async function iniciarCamaraVivo() {
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } },
+        video: { facingMode: { ideal: 'environment' } },
         audio: false
       });
       video.srcObject = stream;
       hide(placeholder);
       show(video);
     } catch (e) {
-      // fallback a modo B
       modo = 'B';
       iniciarInputCapture();
     }
   }
 
   function iniciarInputCapture() {
-    show(placeholder); // se quita cuando el usuario escoja foto
+    show(placeholder);
     inputCapture.classList.remove('hidden');
-
-    // al tocar el botón de cámara, disparamos el input
     btnTomar.onclick = () => inputCapture.click();
 
     inputCapture.onchange = async (ev) => {
       const file = ev.target.files && ev.target.files[0];
       if (!file) return;
-      // Mostrar preview en canvas
       const img = new Image();
       img.onload = () => {
-        // canvas full
         canvas.width = img.width;
         canvas.height = img.height;
         const ctx = canvas.getContext('2d');
@@ -713,7 +722,7 @@
   }
 
   function stopStream() {
-    try { stream && stream.getTracks().forEach(t => t.stop()); } catch(_){}
+    try { stream && stream.getTracks().forEach(t => t.stop()); } catch(_){ }
     stream = null;
   }
 
@@ -725,96 +734,89 @@
   }
 
   async function subirFoto() {
-  if (!fotoListo) return;
+    if (!fotoListo) return;
 
-  const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
-  if (!blob) return;
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
+    if (!blob) return;
 
-  const fd = new FormData();
-  fd.append("foto", blob, "captura.jpg");
+    const fd = new FormData();
+    fd.append('foto', blob, 'captura.jpg');
 
-  const token = document.querySelector('meta[name="csrf-token"]').content;
+    const token = document.querySelector('meta[name="csrf-token"]').content;
 
-  try {
-    const resp = await fetch("{% url 'upload_temporal' %}", {
-      method: "POST",
-      headers: { "X-CSRFToken": token },
-      body: fd
-    });
-    const data = await resp.json();
+    try {
+      const endpoint = objetivoEscaneo === 'receta'
+        ? "{% url 'crear_alarmas_receta' %}"
+        : "{% url 'upload_temporal' %}";
 
-    if (data.ok) {
-  const descripcion = data.para_que_sirve ? data.para_que_sirve : "No se pudo obtener una descripción.";
-  const texto = `${data.nombre}. ${descripcion}`;
-  mostrarRespuestaOK(texto);
-  hablar(texto);
-  cerrarModal();
-} else {
-  const msg = data.error || "La foto tomada . Intenta otra foto.";
-  mostrarNoEntendido(msg);
-  hablar(msg);
-}
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': token },
+        body: fd
+      });
+      const data = await resp.json();
 
-  } catch (e) {
-    hablar("Ocurrió un error al subir la foto.");
-    alert("Error al subir la foto.");
+      if (data.ok) {
+        if (objetivoEscaneo === 'receta') {
+          const texto = data.message || `Detecte ${data.detectados || 0} medicamentos`;
+          mostrarRespuestaOK(texto);
+          hablar(texto);
+        } else {
+          const descripcion = data.para_que_sirve ? data.para_que_sirve : 'No se pudo obtener una descripcion.';
+          const texto = `${data.nombre}. ${descripcion}`;
+          mostrarRespuestaOK(texto);
+          hablar(texto);
+        }
+        cerrarModal();
+      } else {
+        const msg = data.message || data.error || 'No pude analizar la imagen. Intenta otra foto.';
+        mostrarNoEntendido(msg);
+        hablar(msg);
+      }
+    } catch (e) {
+      hablar('Ocurrio un error al subir la foto.');
+      alert('Error al subir la foto.');
+    }
   }
 
+  btnOpen && btnOpen.addEventListener('click', () => {
+    objetivoEscaneo = 'medicamento';
+    abrirModalCamara();
+  });
 
-  // === Modal de aviso cuando no es medicamento ===
-const modalNoMed = document.getElementById("modalNoMedicamento");
-const btnCerrarNoMed = document.getElementById("btnCerrarNoMed");
+  btnLectorReceta && btnLectorReceta.addEventListener('click', () => {
+    objetivoEscaneo = 'receta';
+    abrirModalCamara();
+  });
 
-function mostrarAvisoNoMedicamento() {
-  modalNoMed.classList.remove("hidden");
-  hablar("La foto no parece mostrar un medicamento. Intenta tomar otra foto más clara o desde otro ángulo.");
-}
+  btnCancelar.addEventListener('click', () => { hablar('Cancelado.'); cerrarModal(); });
 
-btnCerrarNoMed.addEventListener("click", () => {
-  modalNoMed.classList.add("hidden");
-});
-
-
-
-
-  }
-
-  // Eventos
-  btnOpen && btnOpen.addEventListener('click', abrirModalCamara);
-  btnCancelar.addEventListener('click', () => { hablar("Cancelado."); cerrarModal(); });
-
-  // En modo A, el botón tomar hace snapshot; en modo B, lo reasignamos a inputCapture.click()
   btnTomar.addEventListener('click', () => {
     if (modo === 'A') {
       tomarFotoDesdeVideo();
-      hablar("Foto tomada. Si quedó bien, presiona aceptar, o sino presiona el boton azul para repetir la foto.");
+      hablar('Foto tomada. Si quedo bien, presiona aceptar, o sino presiona el boton azul para repetir la foto.');
     }
-    // En modo B, btnTomar.onclick se reasigna en iniciarInputCapture()
   });
 
   btnAceptar.addEventListener('click', subirFoto);
 
   btnRepetir.addEventListener('click', () => {
-  if (modo === 'A') {
-    // Vuelve a mostrar la cámara en vivo
-    show(video);
-    hide(canvas);
-    fotoListo = false;
-    btnAceptar.disabled = true;
-    hablar("Vuelve a tomar la foto cuando estés listo.");
-  } else {
-    // Si estás en modo B (desde galería o captura directa)
-    inputCapture.click();
-  }
-});
-
-  // Cierra cámara si el usuario cierra el modal con ESC
-  window.addEventListener('keydown', (ev) => {
-    if (ev.key === "Escape" && !modal.classList.contains('hidden')) {
-      cerrarModal();
+    if (modo === 'A') {
+      show(video);
+      hide(canvas);
+      fotoListo = false;
+      btnAceptar.disabled = true;
+      hablar('Vuelve a tomar la foto cuando estes listo.');
+    } else {
+      inputCapture.click();
     }
   });
 
+  window.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && !modal.classList.contains('hidden')) {
+      cerrarModal();
+    }
+  });
 })();
 </script>
 
@@ -840,6 +842,7 @@ const btnAlarmas = document.getElementById("btnAlarmas");
 const panel = document.getElementById("panelAlarmas");
 const cerrar = document.getElementById("cerrarPanel");
 const lista = document.getElementById("listaAlarmas");
+const btnEliminarTodasAlarmas = document.getElementById("btnEliminarTodasAlarmas");
 
 // Mostrar panel y cargar alarmas
 btnAlarmas.addEventListener("click", async () => {
@@ -851,6 +854,10 @@ btnAlarmas.addEventListener("click", async () => {
 cerrar.addEventListener("click", () => {
   panel.classList.add("hidden");
 });
+
+if (btnEliminarTodasAlarmas) {
+  btnEliminarTodasAlarmas.addEventListener("click", eliminarTodasAlarmas);
+}
 
 // Cargar alarmas dinámicamente (versión grande y accesible)
 async function cargarAlarmas() {
@@ -924,6 +931,37 @@ async function eliminarAlarma(id) {
     setTimeout(() => aviso.remove(), 2000);
   } else {
     alert("❌ No se pudo eliminar la alarma: " + data.error);
+  }
+}
+
+async function eliminarTodasAlarmas() {
+  const ok = confirm("¿Eliminar todas tus alarmas activas?");
+  if (!ok) return;
+
+  const btn = btnEliminarTodasAlarmas;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Eliminando...";
+  }
+
+  try {
+    const res = await fetch("/api/alarmas/eliminar-todas/", {
+      method: "POST",
+      headers: { "X-CSRFToken": getCookie("csrftoken") },
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      alert("No se pudieron eliminar: " + (data.error || "Error desconocido"));
+      return;
+    }
+    lista.innerHTML = "<p class='text-center text-gray-500 text-3xl md:text-4xl'>No tienes alarmas guardadas.</p>";
+  } catch (e) {
+    alert("Error al eliminar todas las alarmas.");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Eliminar todas";
+    }
   }
 }
 </script>

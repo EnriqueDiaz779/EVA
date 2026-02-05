@@ -7,7 +7,8 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
-from django.db import connection
+from django.db import connection, transaction
+from django.db.models import Q
 from django.contrib.auth.hashers import make_password
 from .models import OrdenVoz, Alarma, PatronVoz, CapturaTemporal
 from .openai_client import preguntar_openai
@@ -20,6 +21,7 @@ from django.core.files.base import ContentFile
 from PIL import Image
 import io
 import base64, json, os
+import re
 from django.conf import settings
 from openai import OpenAI
 from django.views.decorators.csrf import csrf_exempt
@@ -36,24 +38,565 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 
+def _resolver_mysql_usuario_id(request):
+    ident = (request.user.username or "").strip()
+    mysql_user = verificar_usuario_en_bd(ident) if ident else None
+    if not mysql_user:
+        nombre = (request.user.first_name or "").strip()
+        mysql_user = verificar_usuario_en_bd(nombre) if nombre else None
+    return mysql_user.get("id") if mysql_user else None
+
+
+def _safe_int(value):
+    try:
+        if value is None or value == "":
+            return None
+        return int(value)
+    except Exception:
+        return None
+
+
+def _safe_float(value, default=0.0):
+    try:
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _parse_hora(valor):
+    if not valor:
+        return None
+    texto = str(valor).strip()
+    for fmt in ("%H:%M", "%H:%M:%S"):
+        try:
+            return datetime.strptime(texto, fmt).time()
+        except Exception:
+            continue
+    return None
+
+
+def _parse_fecha(valor):
+    if not valor:
+        return None
+    texto = str(valor).strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(texto, fmt).date()
+        except Exception:
+            continue
+    return None
+
+
+def _parse_lista_horas(valores):
+    horas = []
+    if not isinstance(valores, list):
+        return horas
+    for v in valores:
+        h = _parse_hora(v)
+        if h:
+            horas.append(h)
+    # quita duplicados conservando orden
+    out = []
+    seen = set()
+    for h in sorted(horas):
+        k = h.strftime("%H:%M")
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(h)
+    return out
+
+
+def _momentos_a_horas(momentos):
+    # Horarios por defecto pensados para adulto mayor.
+    mapa = {
+        "despertar": time(7, 0),
+        "antes_desayuno": time(7, 40),
+        "desayuno": time(8, 0),
+        "antes_almuerzo": time(13, 40),
+        "almuerzo": time(14, 0),
+        "comida": time(16, 0),
+        "mediodia": time(12, 0),
+        "antes_cena": time(19, 40),
+        "cena": time(20, 0),
+        "noche": time(22, 0),
+    }
+    horas = []
+    if isinstance(momentos, list):
+        for m in momentos:
+            clave = str(m or "").strip().lower()
+            if clave in mapa:
+                horas.append(mapa[clave])
+    # únicos ordenados
+    out = []
+    seen = set()
+    for h in sorted(horas):
+        k = h.strftime("%H:%M")
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(h)
+    return out
+
+
+def _inferir_momentos_desde_texto(texto):
+    t = (texto or "").lower()
+    if not t:
+        return []
+    momentos = []
+    if "despert" in t:
+        momentos.append("despertar")
+    if "antes del almuerzo" in t or "antes de almuerzo" in t:
+        momentos.append("antes_almuerzo")
+    if "almuerzo" in t and "antes del almuerzo" not in t:
+        momentos.append("almuerzo")
+    if "comida" in t:
+        momentos.append("comida")
+    if "antes de cena" in t or "antes del cena" in t or "antes cena" in t:
+        momentos.append("antes_cena")
+    if "cena" in t and "antes de cena" not in t and "antes cena" not in t:
+        momentos.append("cena")
+    if "medio dia" in t or "mediodia" in t:
+        momentos.append("mediodia")
+    return momentos
+
+
+def _extraer_horas_de_texto(texto):
+    t = (texto or "").lower()
+    if not t:
+        return []
+    # Evita confundir "cada 6 hrs" (intervalo) con hora fija.
+    if "cada" in t and "hr" in t and ":" not in t:
+        return []
+
+    horas = []
+    for hh, mm in re.findall(r"\b([01]?\d|2[0-3]):([0-5]\d)\b", t):
+        try:
+            horas.append(time(int(hh), int(mm)))
+        except Exception:
+            pass
+
+    # Casos "a las 10 y 18" o "10 y 18:00"
+    if not horas and ("a las" in t or "alas" in t):
+        segmento = t.split("a las", 1)[-1]
+        nums = re.findall(r"\b([01]?\d|2[0-3])\b", segmento)
+        if len(nums) >= 2:
+            try:
+                horas.extend([time(int(nums[0]), 0), time(int(nums[1]), 0)])
+            except Exception:
+                pass
+
+    out = []
+    seen = set()
+    for h in sorted(horas):
+        k = h.strftime("%H:%M")
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(h)
+    return out
+
+
+def _normalizar_fases(raw_fases, fecha_base, duracion_default, unidad_default):
+    fases = []
+    if not isinstance(raw_fases, list):
+        return fases
+    for fase in raw_fases:
+        if not isinstance(fase, dict):
+            continue
+        dur_val = _safe_int(fase.get("duracion_valor")) or duracion_default
+        dur_uni = str(fase.get("duracion_unidad") or unidad_default).strip().lower()
+        if dur_uni not in ("dias", "semanas", "meses"):
+            dur_uni = "dias"
+
+        horas_fijas = _parse_lista_horas(fase.get("horas_fijas"))
+        if not horas_fijas:
+            horas_fijas = _momentos_a_horas(fase.get("momentos"))
+        if not horas_fijas:
+            momentos_txt = _inferir_momentos_desde_texto(fase.get("frecuencia_texto") or "")
+            horas_fijas = _momentos_a_horas(momentos_txt)
+        if not horas_fijas:
+            horas_fijas = _extraer_horas_de_texto(fase.get("frecuencia_texto") or "")
+
+        frecuencia_cada_valor = _safe_int(fase.get("frecuencia_cada_valor"))
+        frecuencia_unidad = str(fase.get("frecuencia_unidad") or "").strip().lower()
+        if frecuencia_unidad not in ("horas", "dias"):
+            frecuencia_unidad = None
+        fases.append(
+            {
+                "duracion_valor": dur_val,
+                "duracion_unidad": dur_uni,
+                "horas_fijas": horas_fijas,
+                "frecuencia_cada_valor": frecuencia_cada_valor,
+                "frecuencia_unidad": frecuencia_unidad,
+            }
+        )
+    return fases
+
+
+def _normalizar_medicamento_receta(raw):
+    if not isinstance(raw, dict):
+        return None
+
+    nombre = (
+        str(raw.get("nombre") or raw.get("medicamento") or raw.get("nombre_medicamento") or "")
+        .strip()
+    )
+    if not nombre:
+        return None
+
+    frecuencia_texto = str(raw.get("frecuencia_texto") or raw.get("cada_cuanto") or "").strip()
+    frecuencia_unidad = str(raw.get("frecuencia_unidad") or "").strip().lower()
+    frecuencia_cada_valor = _safe_int(raw.get("frecuencia_cada_valor"))
+
+    if (frecuencia_cada_valor is None or frecuencia_cada_valor <= 0) and frecuencia_texto:
+        m = re.search(r"cada\s+(\d+)\s*(hora|horas|dia|dias)", frecuencia_texto.lower())
+        if m:
+            frecuencia_cada_valor = int(m.group(1))
+            frecuencia_unidad = "horas" if "hora" in m.group(2) else "dias"
+
+    if frecuencia_unidad not in ("horas", "dias"):
+        frecuencia_unidad = "horas" if "hora" in frecuencia_texto.lower() else "dias"
+
+    if not frecuencia_cada_valor or frecuencia_cada_valor <= 0:
+        frecuencia_cada_valor = 8 if frecuencia_unidad == "horas" else 1
+
+    duracion_valor = _safe_int(raw.get("duracion_valor"))
+    duracion_unidad = str(raw.get("duracion_unidad") or "").strip().lower()
+    duracion_texto = str(raw.get("duracion_texto") or "").strip()
+    if (duracion_valor is None or duracion_valor <= 0) and duracion_texto:
+        m = re.search(r"(\d+)\s*(dia|dias|semana|semanas|mes|meses)", duracion_texto.lower())
+        if m:
+            duracion_valor = int(m.group(1))
+            token = m.group(2)
+            if "semana" in token:
+                duracion_unidad = "semanas"
+            elif "mes" in token:
+                duracion_unidad = "meses"
+            else:
+                duracion_unidad = "dias"
+    if not duracion_valor or duracion_valor <= 0:
+        duracion_valor = 7
+    if duracion_unidad not in ("dias", "semanas", "meses"):
+        duracion_unidad = "dias"
+
+    horas_fijas = _parse_lista_horas(raw.get("horas_fijas"))
+    if not horas_fijas:
+        horas_fijas = _momentos_a_horas(raw.get("momentos"))
+    if not horas_fijas:
+        horas_fijas = _momentos_a_horas(_inferir_momentos_desde_texto(frecuencia_texto))
+    if not horas_fijas:
+        horas_fijas = _extraer_horas_de_texto(frecuencia_texto)
+
+    horario_tipo = str(raw.get("horario_tipo") or "").strip().lower()
+    if horario_tipo not in ("horas_fijas", "intervalo"):
+        horario_tipo = "horas_fijas" if horas_fijas else "intervalo"
+
+    fecha_inicio_raw = _parse_fecha(raw.get("fecha_inicio"))
+    hoy = timezone.localdate()
+    fecha_inicio = fecha_inicio_raw or hoy
+    # Si la receta trae fecha antigua impresa, iniciamos desde hoy para crear alarmas vigentes.
+    if fecha_inicio < hoy:
+        fecha_inicio = hoy
+
+    fases = _normalizar_fases(
+        raw.get("fases"),
+        fecha_inicio,
+        duracion_valor,
+        duracion_unidad,
+    )
+
+    # Si no hay nada claro, mejor 1 vez al dia (evita alarmas fuera de control).
+    if not horas_fijas and not fases and (not frecuencia_cada_valor or frecuencia_cada_valor <= 0):
+        frecuencia_cada_valor = 1
+        frecuencia_unidad = "dias"
+
+    return {
+        "nombre_medicamento": nombre,
+        "dosis_texto": str(raw.get("dosis") or raw.get("dosis_texto") or "").strip(),
+        "horario_tipo": horario_tipo,
+        "horas_fijas": horas_fijas,
+        "frecuencia_cada_valor": frecuencia_cada_valor,
+        "frecuencia_unidad": frecuencia_unidad,
+        "frecuencia_texto": frecuencia_texto or f"cada {frecuencia_cada_valor} {frecuencia_unidad}",
+        "duracion_valor": duracion_valor,
+        "duracion_unidad": duracion_unidad,
+        "duracion_texto": duracion_texto or f"{duracion_valor} {duracion_unidad}",
+        "hora_inicio": _parse_hora(raw.get("hora_inicio")) or time(8, 0),
+        "fecha_inicio": fecha_inicio,
+        "notas": str(raw.get("notas") or "").strip(),
+        "confianza": max(0.0, min(1.0, _safe_float(raw.get("confianza"), 0.75))),
+        "fases": fases,
+    }
+
+
+def _duracion_en_dias(valor, unidad):
+    if valor <= 0:
+        return 7
+    if unidad == "semanas":
+        return valor * 7
+    if unidad == "meses":
+        return valor * 30
+    return valor
+
+
+def _generar_fechas_alarma(med):
+    fecha_inicio = med["fecha_inicio"]
+    hora_inicio = med["hora_inicio"]
+    cada = med["frecuencia_cada_valor"]
+    unidad = med["frecuencia_unidad"]
+    dur_dias = _duracion_en_dias(med["duracion_valor"], med["duracion_unidad"])
+
+    fases = med.get("fases") or []
+    horas_fijas = med.get("horas_fijas") or []
+
+    fechas = []
+
+    if fases:
+        cursor_day = fecha_inicio
+        for fase in fases:
+            fase_dias = _duracion_en_dias(fase["duracion_valor"], fase["duracion_unidad"])
+            fase_horas = fase.get("horas_fijas") or horas_fijas
+            if fase_horas:
+                for d in range(max(fase_dias, 1)):
+                    dia = cursor_day + timedelta(days=d)
+                    for h in fase_horas:
+                        fechas.append(datetime.combine(dia, h))
+            else:
+                f_val = fase.get("frecuencia_cada_valor") or cada
+                f_uni = fase.get("frecuencia_unidad") or unidad
+                inicio_dt = datetime.combine(cursor_day, hora_inicio)
+                fin_dt = datetime.combine(cursor_day + timedelta(days=max(fase_dias - 1, 0)), time(23, 59))
+                paso = timedelta(hours=f_val) if f_uni == "horas" else timedelta(days=f_val)
+                actual = inicio_dt
+                while actual <= fin_dt and len(fechas) < 365:
+                    fechas.append(actual)
+                    actual += paso
+            cursor_day = cursor_day + timedelta(days=max(fase_dias, 1))
+        fecha_fin = (cursor_day - timedelta(days=1)) if cursor_day > fecha_inicio else fecha_inicio
+        return sorted(fechas), fecha_fin
+
+    if horas_fijas:
+        for d in range(max(dur_dias, 1)):
+            dia = fecha_inicio + timedelta(days=d)
+            for h in horas_fijas:
+                fechas.append(datetime.combine(dia, h))
+        fecha_fin = fecha_inicio + timedelta(days=max(dur_dias - 1, 0))
+        return sorted(fechas), fecha_fin
+
+    inicio_dt = datetime.combine(fecha_inicio, hora_inicio)
+    fin_dt = datetime.combine(fecha_inicio + timedelta(days=max(dur_dias - 1, 0)), time(23, 59))
+    paso = timedelta(hours=cada) if unidad == "horas" else timedelta(days=cada)
+    actual = inicio_dt
+    while actual <= fin_dt and len(fechas) < 365:
+        fechas.append(actual)
+        actual += paso
+    if not fechas:
+        fechas = [inicio_dt]
+    return fechas, fin_dt.date()
+
+
+def _analizar_receta_openai(image_bytes):
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    max_side = 1600
+    w, h = img.size
+    scale = min(max_side / float(max(w, h)), 1.0)
+    if scale < 1.0:
+        img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85, optimize=True)
+    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+    prompt = (
+        "Analiza la receta medica y devuelve SOLO JSON valido. "
+        "Extrae horarios reales para alarmas sin inventar datos. "
+        "Formato exacto:\n"
+        '{"medicamentos":[{"nombre":"", "dosis":"", "frecuencia_texto":"", '
+        '"horario_tipo":"horas_fijas|intervalo", '
+        '"horas_fijas":["10:00","18:00"], '
+        '"momentos":["despertar","antes_almuerzo","antes_cena","mediodia"], '
+        '"frecuencia_cada_valor":6, "frecuencia_unidad":"horas|dias", '
+        '"duracion_valor":8, "duracion_unidad":"dias|semanas|meses", '
+        '"fases":[{"duracion_valor":8,"duracion_unidad":"dias","momentos":["antes_almuerzo","comida","cena"]},'
+        '{"duracion_valor":1,"duracion_unidad":"meses","momentos":["antes_almuerzo","antes_cena"]}], '
+        '"hora_inicio":"08:00", "fecha_inicio":"YYYY-MM-DD", "notas":"", "confianza":0.90}]}\n'
+        "Reglas: "
+        "1) Si el texto tiene horas explicitas, ponlas en horas_fijas. "
+        "2) Si dice cada X horas, usa horario_tipo=intervalo con frecuencia_cada_valor/unidad. "
+        "3) Si hay cambios por periodos (ej. '8 dias... despues 1 mes...'), usa fases. "
+        "4) Si dice PRN, agregalo en notas y no elimines el esquema principal. "
+        "5) Si no se reconoce receta, devuelve medicamentos=[]."
+    )
+
+    resp = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "Extrae datos clinicos de recetas. Responde solo JSON."},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                ],
+            },
+        ],
+        temperature=0.1,
+    )
+    texto = (resp.choices[0].message.content or "").strip()
+    data = _extraer_json_seguro(texto)
+    meds_raw = data.get("medicamentos", []) if isinstance(data, dict) else []
+
+    meds = []
+    for item in meds_raw:
+        med = _normalizar_medicamento_receta(item)
+        if med:
+            meds.append(med)
+    return meds, texto
+
+
+def _guardar_tratamiento_medicamentos_alarmas(usuario_id, medicamentos, django_user=None):
+    resumen = []
+    total_alarmas = 0
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO tratamientos (usuario_id, origen, estado) VALUES (%s, %s, %s)",
+                [usuario_id, "OCR", "activo"],
+            )
+            tratamiento_id = cursor.lastrowid
+
+            for med in medicamentos:
+                fechas_alarma, fecha_fin = _generar_fechas_alarma(med)
+                cursor.execute(
+                    """
+                    INSERT INTO tratamiento_medicamentos (
+                        tratamiento_id, nombre_medicamento, dosis_texto,
+                        frecuencia_cada_valor, frecuencia_unidad, frecuencia_texto,
+                        duracion_valor, duracion_unidad, duracion_texto,
+                        fecha_inicio, hora_inicio, fecha_fin,
+                        regla_horario, notas, confianza, confirmado
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    [
+                        tratamiento_id,
+                        med["nombre_medicamento"],
+                        med["dosis_texto"] or None,
+                        med["frecuencia_cada_valor"],
+                        med["frecuencia_unidad"],
+                        med["frecuencia_texto"] or None,
+                        med["duracion_valor"],
+                        med["duracion_unidad"],
+                        med["duracion_texto"] or None,
+                        med["fecha_inicio"],
+                        med["hora_inicio"],
+                        fecha_fin,
+                        (
+                            "horas_fijas: " + ", ".join([h.strftime("%H:%M") for h in (med.get("horas_fijas") or [])])
+                            if (med.get("horas_fijas") or [])
+                            else f"cada {med['frecuencia_cada_valor']} {med['frecuencia_unidad']}"
+                        ),
+                        med["notas"] or None,
+                        round(med["confianza"] * 100.0, 2),
+                        0,
+                    ],
+                )
+                id_tm = cursor.lastrowid
+
+                creadas = 0
+                for fecha_hora in fechas_alarma:
+                    mensaje = f"Tomar {med['nombre_medicamento']}"
+                    if med["dosis_texto"]:
+                        mensaje = f"{mensaje} ({med['dosis_texto']})"
+                    cursor.execute(
+                        """
+                        INSERT INTO alarma (Fecha_hora, Mensaje, Estado, tipo, tratamiento_id, id_tm, Usuario_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        [fecha_hora, mensaje, "pendiente", "medicamento", tratamiento_id, id_tm, usuario_id],
+                    )
+                    if django_user is not None:
+                        Alarma.objects.create(
+                            usuario=django_user,
+                            fecha=fecha_hora.date(),
+                            hora=fecha_hora.time(),
+                            mensaje=mensaje,
+                            activa=True,
+                            entregada=False,
+                        )
+                    creadas += 1
+                    total_alarmas += 1
+
+                resumen.append(
+                    {
+                        "id_tm": id_tm,
+                        "nombre": med["nombre_medicamento"],
+                        "dosis": med["dosis_texto"],
+                        "frecuencia": med["frecuencia_texto"],
+                        "alarmas_creadas": creadas,
+                    }
+                )
+    return tratamiento_id, total_alarmas, resumen
+
+
+@login_required
 @require_POST
 def crear_alarmas_receta(request):
-    """
-    Espera JSON con:
-    {
-      "fecha": "YYYY-MM-DD",
-      "items": [{"nombre":"Ambroxol","dosis":"2","hora":"13:00"}, ...]
-    }
-    """
     try:
-        payload = json.loads(request.body.decode("utf-8") or "{}")
-        fecha = payload.get("fecha")
-        items = payload.get("items", [])
+        foto = request.FILES.get("foto")
+        if not foto:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+            items = payload.get("items", [])
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "message": f"Detecte {len(items)} medicamentos",
+                    "detectados": len(items),
+                    "medicamentos": items,
+                }
+            )
 
-        # TODO: aquí guardas en tu BD (Alarmas/Citas) según tu modelo
-        # Por ahora solo regresamos ok
-        return JsonResponse({"ok": True, "fecha": fecha, "count": len(items)})
+        content_type = (getattr(foto, "content_type", "") or "").lower()
+        if not content_type.startswith("image/"):
+            return JsonResponse({"ok": False, "error": "Formato no valido. Debe ser imagen."}, status=400)
 
+        image_bytes = foto.read()
+        if not image_bytes:
+            return JsonResponse({"ok": False, "error": "No se pudo leer la imagen."}, status=400)
+
+        medicamentos, debug_text = _analizar_receta_openai(image_bytes)
+        if not medicamentos:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "message": "Detecte 0 medicamentos",
+                    "detectados": 0,
+                    "medicamentos": [],
+                    "error": "No pude extraer medicamentos de la receta.",
+                    "debug": debug_text,
+                },
+                status=200,
+            )
+
+        usuario_id = _resolver_mysql_usuario_id(request)
+        if not usuario_id:
+            return JsonResponse({"ok": False, "error": "No pude resolver el Usuario_id."}, status=400)
+
+        tratamiento_id, total_alarmas, resumen = _guardar_tratamiento_medicamentos_alarmas(
+            usuario_id, medicamentos, django_user=request.user
+        )
+        detectados = len(resumen)
+
+        return JsonResponse(
+            {
+                "ok": True,
+                "message": f"Detecte {detectados} medicamentos",
+                "detectados": detectados,
+                "tratamiento_id": tratamiento_id,
+                "alarmas_creadas": total_alarmas,
+                "medicamentos": resumen,
+            }
+        )
     except Exception as e:
         return JsonResponse({"ok": False, "error": str(e)}, status=400)
 
@@ -920,7 +1463,14 @@ def pendientes(request):
 
     alarmas = (
         Alarma.objects
-        .filter(activa=True, entregada=False, hora__gte=inicio, hora__lte=fin)
+        .filter(
+            usuario=request.user,
+            activa=True,
+            entregada=False,
+            hora__gte=inicio,
+            hora__lte=fin,
+        )
+        .filter(Q(fecha__isnull=True) | Q(fecha=ahora.date()))
         .order_by("hora")
     )
 
@@ -981,7 +1531,7 @@ def pendientes(request):
 def marcar_entregada(request):
     _id = request.POST.get("id")
     try:
-        a = Alarma.objects.get(id=_id)
+        a = Alarma.objects.get(id=_id, usuario=request.user)
 
         # 🟢 Si la alarma NO tiene días definidos (una sola vez)
         if not a.dias:
@@ -1010,7 +1560,7 @@ def reprogramar_alarma(request):
     """
     _id = request.POST.get("id")
     try:
-        a = Alarma.objects.get(id=_id)
+        a = Alarma.objects.get(id=_id, usuario=request.user)
         ahora = timezone.localtime()
 
         base_dt = datetime.combine(ahora.date(), a.hora)
@@ -1276,7 +1826,13 @@ def crear_alarma(request):
 @login_required
 def obtener_alarmas(request):
     """Devuelve las alarmas activas en formato JSON"""
-    alarmas = Alarma.objects.filter(activa=True).order_by('hora')
+    hoy = timezone.localdate()
+    alarmas = (
+        Alarma.objects
+        .filter(usuario=request.user, activa=True)
+        .filter(Q(fecha__isnull=True) | Q(fecha__gte=hoy))
+        .order_by('fecha', 'hora')
+    )
     data = [
         {
             "id": a.id,
@@ -1302,7 +1858,7 @@ def eliminar_alarma_ajax(request):
             print("⚠️ ID no recibido.")
             return JsonResponse({"ok": False, "error": "ID no recibido"}, status=400)
 
-        alarma = Alarma.objects.filter(id=_id).first()
+        alarma = Alarma.objects.filter(id=_id, usuario=request.user).first()
         if not alarma:
             print("⚠️ No existe alarma con ese ID.")
             return JsonResponse({"ok": False, "error": "No existe"}, status=404)
@@ -1313,6 +1869,49 @@ def eliminar_alarma_ajax(request):
 
     except Exception as e:
         print(f"❌ Error al eliminar alarma: {e}")
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+
+@login_required
+@require_POST
+@csrf_exempt
+def eliminar_todas_alarmas_ajax(request):
+    try:
+        # Borra todas las alarmas activas del usuario en Django (UI / scheduler actual)
+        total_django = Alarma.objects.filter(usuario=request.user, activa=True).count()
+        Alarma.objects.filter(usuario=request.user, activa=True).delete()
+
+        # Mantiene consistencia con tabla MySQL de alarmas de receta
+        usuario_id = _resolver_mysql_usuario_id(request)
+        total_mysql = 0
+        if usuario_id:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM alarma
+                    WHERE Usuario_id=%s AND Estado='pendiente'
+                    """,
+                    [usuario_id],
+                )
+                total_mysql = cursor.fetchone()[0] or 0
+                cursor.execute(
+                    """
+                    UPDATE alarma
+                    SET Estado='cancelada'
+                    WHERE Usuario_id=%s AND Estado='pendiente'
+                    """,
+                    [usuario_id],
+                )
+
+        return JsonResponse(
+            {
+                "ok": True,
+                "eliminadas": int(total_django),
+                "canceladas_mysql": int(total_mysql),
+            }
+        )
+    except Exception as e:
         return JsonResponse({"ok": False, "error": str(e)}, status=500)
 3
 #------notificar SW-----#
