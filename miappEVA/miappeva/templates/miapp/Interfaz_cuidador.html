@@ -248,7 +248,7 @@
             </div>
 
             <p id="emptyCitasHint" class="mt-4 text-sm text-gray-500 text-center hidden">
-              No hay citas para este día.
+              No hay alarmas ni citas para este día.
             </p>
 
             <p class="mt-4 text-xs text-gray-400 text-center">
@@ -259,15 +259,30 @@
 
         <!-- BOTÓN + -->
         <div class="flex justify-center lg:pt-14">
-          <button id="btnAgregarEvento"
-                  type="button"
-                  class="w-16 h-16 rounded-2xl bg-gray-200 hover:bg-gray-300
-                         shadow-lg border border-gray-300
-                         flex items-center justify-center
-                         text-4xl font-extrabold text-gray-700
-                         transition active:scale-95">
-            +
-          </button>
+
+          <div class="relative">
+            <button id="btnAgregarEvento"
+                    type="button"
+                    class="w-16 h-16 rounded-2xl bg-gray-200 hover:bg-gray-300
+                           shadow-lg border border-gray-300
+                           flex items-center justify-center
+                           text-4xl font-extrabold text-gray-700
+                           transition active:scale-95">
+              +
+            </button>
+
+            <div id="menuAgregar"
+                 class="hidden absolute left-1/2 -translate-x-1/2 mt-3 w-48 bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden z-50">
+              <button id="btnCrearAlarma" type="button"
+                      class="w-full text-left px-4 py-3 text-sm font-extrabold text-blue-900 hover:bg-blue-50">
+                Crear alarma
+              </button>
+              <button id="btnCrearCita" type="button"
+                      class="w-full text-left px-4 py-3 text-sm font-extrabold text-gray-800 hover:bg-gray-50">
+                Crear cita
+              </button>
+            </div>
+          </div>
         </div>
 
       </div>
@@ -292,9 +307,7 @@
       <div class="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
         <div>
           <p class="font-extrabold text-lg">Genera una alarma para una cita</p>
-          <p class="text-sm text-gray-500">
-            Fecha seleccionada: <span id="fechaModalInfo" class="font-extrabold"></span>
-          </p>
+          <p class="text-sm text-gray-500">Selecciona la fecha de la cita.</p>
         </div>
         <button id="btnCerrarModalCita" type="button" class="text-xl text-gray-500 hover:text-gray-800">✕</button>
       </div>
@@ -309,17 +322,93 @@
         </div>
 
         <div>
+          <label class="text-sm font-bold text-gray-700">Fecha:</label>
+          <input id="citaFechaModal"
+                 type="date"
+                 class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200" />
+        </div>
+
+        <div>
           <label class="text-sm font-bold text-gray-700">Hora:</label>
           <input id="citaHoraModal"
                  type="time"
                  class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200" />
-          <p class="mt-1 text-xs text-gray-400">Se agregará al día seleccionado.</p>
+          <p class="mt-1 text-xs text-gray-400">Se agregar? al d?a seleccionado.</p>
         </div>
 
         <button type="submit"
                 class="w-full bg-blue-900 hover:bg-blue-950 text-white font-extrabold py-2 rounded-xl shadow transition active:scale-95">
           Crear alarma de cita
         </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: ALARMA (CREAR / EDITAR) ===== -->
+<div id="modalAlarma" class="hidden fixed inset-0 z-[99998]">
+  <div class="absolute inset-0 bg-black/50"></div>
+
+  <div class="relative h-full w-full flex items-center justify-center px-4">
+    <div class="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
+      <div class="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+        <div>
+          <p id="tituloModalAlarma" class="font-extrabold text-lg">Nueva alarma</p>
+          <p class="text-sm text-gray-500">Se creara para el adulto vinculado.</p>
+        </div>
+        <button id="btnCerrarModalAlarma" type="button" class="text-xl text-gray-500 hover:text-gray-800">x</button>
+      </div>
+
+      <form id="formAlarmaModal" class="p-5 space-y-4">
+        <div>
+          <label class="text-sm font-bold text-gray-700">Mensaje / Nombre:</label>
+          <input id="alarmaMensajeModal"
+                 type="text"
+                 class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                 placeholder="Ej. Tomar Paracetamol" />
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="text-sm font-bold text-gray-700">Hora:</label>
+            <input id="alarmaHoraModal"
+                   type="time"
+                   class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200" />
+          </div>
+          <div>
+            <label class="text-sm font-bold text-gray-700">Fecha (opcional):</label>
+            <input id="alarmaFechaModal"
+                   type="date"
+                   class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200" />
+          </div>
+        </div>
+
+        <div>
+          <label class="text-sm font-bold text-gray-700">Dias (opcional):</label>
+          <input id="alarmaDiasModal"
+                 type="text"
+                 class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200"
+                 placeholder="Lun, Mar, Mie, Jue, Vie" />
+          <p class="mt-1 text-xs text-gray-400">Si no hay dias ni fecha, la alarma es diaria.</p>
+        </div>
+
+        <label class="flex items-center gap-2 text-sm text-gray-700">
+          <input id="alarmaActivaModal" type="checkbox" class="rounded" checked />
+          Activa
+        </label>
+
+        <div class="flex items-center gap-3">
+          <button type="submit"
+                  id="btnGuardarAlarma"
+                  class="flex-1 bg-blue-900 hover:bg-blue-950 text-white font-extrabold py-2 rounded-xl shadow transition active:scale-95">
+            Guardar
+          </button>
+          <button type="button"
+                  id="btnEliminarAlarma"
+                  class="hidden bg-red-500 hover:bg-red-600 text-white font-extrabold py-2 px-4 rounded-xl shadow transition active:scale-95">
+            Eliminar
+          </button>
+        </div>
       </form>
     </div>
   </div>
@@ -550,6 +639,8 @@
 
       renderAdultoActual(data.adulto?.nombre || "");
       renderListaAdultos(data.adultos || []);
+      await cargarAlarmasServidor();
+      renderTablaCalendario();
       setBloqueo(false);
 
     } catch (e) {
@@ -591,6 +682,8 @@
 
       renderAdultoActual(data.adulto?.nombre || "");
       renderListaAdultos(data.adultos || []);
+      await cargarAlarmasServidor();
+      renderTablaCalendario();
       closeMini();
     } catch (e) {
       if (miniError) { miniError.textContent = "Error de conexión. Intenta de nuevo."; miniError.classList.remove("hidden"); }
@@ -608,6 +701,8 @@
       if (!data.ok) return;
       renderAdultoActual(data.adulto?.nombre || "");
       renderListaAdultos(data.adultos || []);
+      await cargarAlarmasServidor();
+      renderTablaCalendario();
     } catch (e) {}
   }
 
@@ -645,8 +740,11 @@
 
   const DIAS = ["DOMINGO","LUNES","MARTES","MIÉRCOLES","JUEVES","VIERNES","SÁBADO"];
   const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  const DIAS_ES = ["dom","lun","mar","mie","jue","vie","sab"];
+  const DIAS_EN = ["sun","mon","tue","wed","thu","fri","sat"];
 
   let selectedDate = new Date();
+  let alarmasServidor = [];
 
   const diaActualLabel = document.getElementById("diaActualLabel");
   const fechaCompletaLabel = document.getElementById("fechaCompletaLabel");
@@ -657,6 +755,9 @@
   const emptyCitasHint = document.getElementById("emptyCitasHint");
 
   const btnAgregarEvento = document.getElementById("btnAgregarEvento");
+  const menuAgregar = document.getElementById("menuAgregar");
+  const btnCrearAlarma = document.getElementById("btnCrearAlarma");
+  const btnCrearCita = document.getElementById("btnCrearCita");
 
   // Modal refs
   const modalCita = document.getElementById("modalCita");
@@ -664,11 +765,58 @@
   const fechaModalInfo = document.getElementById("fechaModalInfo");
   const formCitaModal = document.getElementById("formCitaModal");
   const citaLugarModal = document.getElementById("citaLugarModal");
+  const citaFechaModal = document.getElementById("citaFechaModal");
   const citaHoraModal = document.getElementById("citaHoraModal");
+
+  // Alarma modal refs
+  const modalAlarma = document.getElementById("modalAlarma");
+  const btnCerrarModalAlarma = document.getElementById("btnCerrarModalAlarma");
+  const tituloModalAlarma = document.getElementById("tituloModalAlarma");
+  const formAlarmaModal = document.getElementById("formAlarmaModal");
+  const alarmaMensajeModal = document.getElementById("alarmaMensajeModal");
+  const alarmaHoraModal = document.getElementById("alarmaHoraModal");
+  const alarmaFechaModal = document.getElementById("alarmaFechaModal");
+  const alarmaDiasModal = document.getElementById("alarmaDiasModal");
+  const alarmaActivaModal = document.getElementById("alarmaActivaModal");
+  const btnEliminarAlarma = document.getElementById("btnEliminarAlarma");
+  const btnGuardarAlarma = document.getElementById("btnGuardarAlarma");
+  let alarmaEditId = null;
+
 
   function pad2(n){ return String(n).padStart(2,"0"); }
   function ymd(date){ return `${date.getFullYear()}-${pad2(date.getMonth()+1)}-${pad2(date.getDate())}`; }
   function fechaLarga(date){ return `${pad2(date.getDate())} de ${MESES[date.getMonth()]} de ${date.getFullYear()}`; }
+
+  function escapeAttr(value) {
+    return String(value || "").replace(/"/g, "'");
+  }
+
+  function normalizarDiaToken(raw) {
+    return (raw || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .slice(0, 3);
+  }
+
+  function diaTokens(date) {
+    const idx = date.getDay();
+    return [DIAS_ES[idx], DIAS_EN[idx]];
+  }
+
+  function alarmaAplicaEnFecha(alarma, date) {
+    if (!alarma) return false;
+    if (alarma.fecha) {
+      return alarma.fecha === ymd(date);
+    }
+    const dias = (alarma.dias || "")
+      .split(",")
+      .map(s => normalizarDiaToken(s.trim()))
+      .filter(Boolean);
+    if (dias.length === 0) return true;
+    const [es, en] = diaTokens(date);
+    return dias.includes(es) || dias.includes(en);
+  }
 
   function renderFecha() {
     const d = selectedDate;
@@ -699,29 +847,61 @@
   function renderTablaCalendario() {
     const data = loadDayData();
     const citas = Array.isArray(data.citas) ? data.citas : [];
+    const alarmas = Array.isArray(alarmasServidor) ? alarmasServidor : [];
+    const alarmasDia = alarmas.filter(a => alarmaAplicaEnFecha(a, selectedDate));
 
     if (!tablaCitasBody) return;
 
-    if (citas.length === 0) {
+    const filas = [
+      ...alarmasDia.map(a => ({
+        tipo: "alarma",
+        id: a.id,
+        texto: a.mensaje || "Alarma",
+        hora: a.hora || "--:--",
+        fecha: a.fecha || "",
+        dias: a.dias || "",
+        activa: a.activa !== false
+      })),
+      ...citas.map((c, idx) => ({
+        tipo: "cita",
+        texto: c.lugar || "Cita",
+        hora: c.hora || "--:--",
+        idx
+      })),
+    ];
+
+    if (filas.length === 0) {
       tablaCitasBody.innerHTML = "";
       emptyCitasHint?.classList.remove("hidden");
       return;
     }
 
     emptyCitasHint?.classList.add("hidden");
-    citas.sort((a,b) => (a.hora||"").localeCompare(b.hora||""));
+    filas.sort((a,b) => (a.hora||"").localeCompare(b.hora||""));
 
-    tablaCitasBody.innerHTML = citas.map((c, idx) => `
+    tablaCitasBody.innerHTML = filas.map((f) => `
       <div class="grid grid-cols-[1.3fr_.7fr] items-center text-sm">
-        <div class="px-3 py-2 font-semibold text-gray-800 truncate" title="${(c.lugar||"").replaceAll('"',"'")}">
-          ${c.lugar || "Cita"}
+        <div class="px-3 py-2 font-semibold text-gray-800 truncate" title="${escapeAttr(f.texto)}">
+          ${f.texto}
         </div>
         <div class="px-3 py-2 text-center text-gray-700 flex items-center justify-center gap-2">
-          <span>${c.hora || "--:--"}</span>
-          <button type="button" data-del="${idx}"
-                  class="ml-1 text-xs font-extrabold px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100 active:scale-95 transition">
-            ✕
-          </button>
+          <span>${f.hora || "--:--"}</span>
+          ${f.tipo === "cita" ? `
+            <button type="button" data-del="${f.idx}"
+                    class="ml-1 text-xs font-extrabold px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100 active:scale-95 transition">
+              X
+            </button>
+          ` : ``}
+          ${f.tipo === "alarma" ? `
+            <button type="button" data-edit-alarm="${f.id}"
+                    class="ml-1 text-xs font-extrabold px-2 py-1 rounded-lg border border-blue-200 hover:bg-blue-50 active:scale-95 transition">
+              Editar
+            </button>
+            <button type="button" data-del-alarm="${f.id}"
+                    class="ml-1 text-xs font-extrabold px-2 py-1 rounded-lg border border-red-200 hover:bg-red-50 active:scale-95 transition">
+              Eliminar
+            </button>
+          ` : ``}
         </div>
       </div>
     `).join("");
@@ -735,6 +915,32 @@
         renderTablaCalendario();
       });
     });
+
+    tablaCitasBody.querySelectorAll("button[data-edit-alarm]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = Number(btn.getAttribute("data-edit-alarm"));
+        const alarma = (alarmasServidor || []).find(a => String(a.id) === String(id));
+        if (!alarma) return;
+        openModalAlarma("edit", alarma);
+      });
+    });
+
+    tablaCitasBody.querySelectorAll("button[data-del-alarm]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = Number(btn.getAttribute("data-del-alarm"));
+        if (!id) return;
+        if (!confirm("Eliminar esta alarma?")) return;
+        const fd = new FormData();
+        fd.append("id", id);
+        const { data } = await postForm("{% url 'eliminar_alarma_cuidador' %}", fd);
+        if (!data.ok) {
+          alert(data.error || "No se pudo eliminar la alarma.");
+          return;
+        }
+        await cargarAlarmasServidor();
+        renderTablaCalendario();
+      });
+    });
   }
 
   function setSelectedDate(date) {
@@ -743,13 +949,44 @@
     renderTablaCalendario();
   }
 
+  function openModalAlarma(modo, alarma) {
+    alarmaEditId = modo === "edit" ? (alarma?.id || null) : null;
+    if (tituloModalAlarma) tituloModalAlarma.textContent = modo === "edit" ? "Editar alarma" : "Nueva alarma";
+
+    alarmaMensajeModal.value = alarma?.mensaje || "";
+    alarmaHoraModal.value = alarma?.hora || "";
+    alarmaFechaModal.value = alarma?.fecha || "";
+    alarmaDiasModal.value = alarma?.dias || "";
+    alarmaActivaModal.checked = (alarma?.activa !== false);
+
+    if (btnEliminarAlarma) btnEliminarAlarma.classList.toggle("hidden", modo !== "edit");
+
+    modalAlarma?.classList.remove("hidden");
+    document.body.classList.add("overflow-hidden");
+  }
+
+  function closeModalAlarma() {
+    modalAlarma?.classList.add("hidden");
+    document.body.classList.remove("overflow-hidden");
+  }
+
+  async function cargarAlarmasServidor() {
+    try {
+      const resp = await fetch("{% url 'obtener_alarmas_cuidador' %}");
+      const data = await resp.json().catch(() => ({}));
+      alarmasServidor = Array.isArray(data.alarmas) ? data.alarmas : [];
+    } catch (e) {
+      alarmasServidor = [];
+    }
+  }
+
   btnDiaPrev?.addEventListener("click", () => setSelectedDate(addDays(selectedDate, -1)));
   btnDiaNext?.addEventListener("click", () => setSelectedDate(addDays(selectedDate, 1)));
 
   // Modal open/close
   function openModalCita() {
-    renderFecha();
     citaLugarModal.value = "";
+    if (citaFechaModal) citaFechaModal.value = "";
     citaHoraModal.value = "";
     modalCita.classList.remove("hidden");
     document.body.classList.add("overflow-hidden");
@@ -761,37 +998,127 @@
     document.body.classList.remove("overflow-hidden");
   }
 
-  btnAgregarEvento?.addEventListener("click", openModalCita);
+  btnAgregarEvento?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    menuAgregar?.classList.toggle("hidden");
+  });
   btnCerrarModalCita?.addEventListener("click", closeModalCita);
   modalCita?.addEventListener("click", (e) => { if (e.target === modalCita) closeModalCita(); });
+
+  btnCrearAlarma?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    menuAgregar?.classList.add("hidden");
+    closeModalCita();
+    openModalAlarma("create");
+  });
+
+  btnCrearCita?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    menuAgregar?.classList.add("hidden");
+    closeModalAlarma();
+    openModalCita();
+  });
+
+  document.addEventListener("click", () => {
+    menuAgregar?.classList.add("hidden");
+  });
+
+  menuAgregar?.addEventListener("click", (e) => e.stopPropagation());
+
+  btnCerrarModalAlarma?.addEventListener("click", closeModalAlarma);
+  modalAlarma?.addEventListener("click", (e) => { if (e.target === modalAlarma) closeModalAlarma(); });
+
+  formAlarmaModal?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const mensaje = (alarmaMensajeModal?.value || "").trim();
+    const hora = (alarmaHoraModal?.value || "").trim();
+    const fecha = (alarmaFechaModal?.value || "").trim();
+    const dias = (alarmaDiasModal?.value || "").trim();
+    const activa = alarmaActivaModal?.checked ? "1" : "0";
+
+    if (!mensaje || !hora) {
+      alert("Mensaje y hora son requeridos.");
+      return;
+    }
+
+    const fd = new FormData();
+    fd.append("mensaje", mensaje);
+    fd.append("hora", hora);
+    if (fecha) fd.append("fecha", fecha);
+    if (dias) fd.append("dias", dias);
+    fd.append("activa", activa);
+
+    const url = alarmaEditId ? "{% url 'editar_alarma_cuidador' %}" : "{% url 'crear_alarma_cuidador' %}";
+    if (alarmaEditId) fd.append("id", alarmaEditId);
+
+    const { data } = await postForm(url, fd);
+    if (!data.ok) {
+      alert(data.error || "No se pudo guardar la alarma.");
+      return;
+    }
+
+    await cargarAlarmasServidor();
+    renderTablaCalendario();
+    closeModalAlarma();
+  });
+
+  btnEliminarAlarma?.addEventListener("click", async () => {
+    if (!alarmaEditId) return;
+    if (!confirm("Eliminar esta alarma?")) return;
+
+    const fd = new FormData();
+    fd.append("id", alarmaEditId);
+    const { data } = await postForm("{% url 'eliminar_alarma_cuidador' %}", fd);
+    if (!data.ok) {
+      alert(data.error || "No se pudo eliminar la alarma.");
+      return;
+    }
+    await cargarAlarmasServidor();
+    renderTablaCalendario();
+    closeModalAlarma();
+  });
+
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && modalCita && !modalCita.classList.contains("hidden")) closeModalCita();
   });
 
-  // Guardar cita desde el modal
-  formCitaModal?.addEventListener("submit", (e) => {
+  // Guardar cita desde el modal (crea alarma real)
+  formCitaModal?.addEventListener("submit", async (e) => {
     e.preventDefault();
 
     const lugar = (citaLugarModal?.value || "").trim();
+    const fecha = (citaFechaModal?.value || "").trim();
     const hora = (citaHoraModal?.value || "").trim();
 
-    if (!lugar || !hora) {
-      alert("Llena Lugar y Hora.");
+    if (!lugar || !fecha || !hora) {
+      alert("Llena Lugar, Fecha y Hora.");
       return;
     }
 
-    const d = loadDayData();
-    d.citas = Array.isArray(d.citas) ? d.citas : [];
-    d.citas.push({ lugar, hora });
-    saveDayData(d);
+    const fd = new FormData();
+    fd.append("mensaje", lugar);
+    fd.append("hora", hora);
+    fd.append("fecha", fecha);
+    fd.append("activa", "1");
 
+    const { data } = await postForm("{% url 'crear_alarma_cuidador' %}", fd);
+    if (!data.ok) {
+      alert(data.error || "No se pudo crear la alarma.");
+      return;
+    }
+
+    await cargarAlarmasServidor();
     renderTablaCalendario();
     closeModalCita();
   });
 
   // Init
   setSelectedDate(new Date());
+  cargarAlarmasServidor().then(() => renderTablaCalendario());
 </script>
 
 </body>

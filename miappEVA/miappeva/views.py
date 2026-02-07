@@ -1844,6 +1844,186 @@ def obtener_alarmas(request):
     ]
     return JsonResponse({"ok": True, "alarmas": data})
 
+#-------obtener alarmas del adulto vinculado (cuidador)-----#
+@login_required
+def obtener_alarmas_cuidador(request):
+    ident = (request.user.username or "").strip()
+    mysql_user = verificar_usuario_en_bd(ident)
+    if not mysql_user or mysql_user.get("tipo") != "cuidador":
+        return JsonResponse({"ok": False, "error": "Solo cuidadores."}, status=403)
+
+    cuidador_id = mysql_user["id"]
+    adulto_vinculado = _mysql_get_vinculo_activo_cuidador(cuidador_id)
+    if not adulto_vinculado:
+        return JsonResponse({"ok": True, "alarmas": []})
+
+    # Obtener correo del adulto para mapear a usuario Django
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT correo FROM Usuarios WHERE Id_Usuario=%s LIMIT 1",
+            [adulto_vinculado["id"]],
+        )
+        r = cursor.fetchone()
+    correo_adulto = (r[0] if r else "") or ""
+
+    adulto_django = _django_user_from_mysql_adulto(adulto_vinculado["nombre"], correo_adulto)
+    if not adulto_django:
+        return JsonResponse({"ok": True, "alarmas": []})
+
+    hoy = timezone.localdate()
+    alarmas = (
+        Alarma.objects
+        .filter(usuario=adulto_django, activa=True)
+        .filter(Q(fecha__isnull=True) | Q(fecha__gte=hoy))
+        .order_by("fecha", "hora")
+    )
+
+    data = [
+        {
+            "id": a.id,
+            "hora": a.hora.strftime("%H:%M"),
+            "mensaje": a.mensaje,
+            "dias": a.dias or "",
+            "fecha": a.fecha.isoformat() if a.fecha else None,
+            "activa": bool(a.activa),
+        }
+        for a in alarmas
+    ]
+    return JsonResponse({"ok": True, "alarmas": data})
+
+
+#------helpers cuidador -> adulto-----#
+# no decorator: helper interno
+def _cuidador_get_adulto_django(request):
+    ident = (request.user.username or "").strip()
+    mysql_user = verificar_usuario_en_bd(ident)
+    if not mysql_user or mysql_user.get("tipo") != "cuidador":
+        return None, "Solo cuidadores."
+
+    cuidador_id = mysql_user["id"]
+    adulto_vinculado = _mysql_get_vinculo_activo_cuidador(cuidador_id)
+    if not adulto_vinculado:
+        return None, "No hay adulto vinculado."
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT correo FROM Usuarios WHERE Id_Usuario=%s LIMIT 1",
+            [adulto_vinculado["id"]],
+        )
+        r = cursor.fetchone()
+    correo_adulto = (r[0] if r else "") or ""
+
+    adulto_django = _django_user_from_mysql_adulto(adulto_vinculado["nombre"], correo_adulto)
+    if not adulto_django:
+        return None, "No se encontr? usuario Django del adulto."
+
+    return adulto_django, None
+
+#------crear alarma (cuidador)-----#
+@login_required
+@require_POST
+@csrf_exempt
+
+def crear_alarma_cuidador(request):
+    adulto_django, err = _cuidador_get_adulto_django(request)
+    if err:
+        return JsonResponse({"ok": False, "error": err}, status=403)
+
+    fecha_raw = request.POST.get("fecha")
+    hora_raw = request.POST.get("hora")
+    mensaje = (request.POST.get("mensaje") or "?Es hora de tu alarma!").strip()
+    dias = (request.POST.get("dias") or "").strip()
+    activa_raw = request.POST.get("activa")
+
+    if not hora_raw:
+        return JsonResponse({"ok": False, "error": "Hora requerida"}, status=400)
+
+    hora = _parse_hora(hora_raw)
+    if not hora:
+        return JsonResponse({"ok": False, "error": "Hora inv?lida"}, status=400)
+
+    fecha = _parse_fecha(fecha_raw) if fecha_raw else None
+    activa = True if activa_raw is None else str(activa_raw).lower() in ("1", "true", "on", "si", "s?")
+
+    try:
+        alarma = Alarma.objects.create(
+            usuario=adulto_django,
+            fecha=fecha,
+            hora=hora,
+            mensaje=mensaje,
+            dias=dias,
+            activa=activa,
+        )
+        return JsonResponse({"ok": True, "id": alarma.id})
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+#------editar alarma (cuidador)-----#
+@login_required
+@require_POST
+@csrf_exempt
+
+def editar_alarma_cuidador(request):
+    adulto_django, err = _cuidador_get_adulto_django(request)
+    if err:
+        return JsonResponse({"ok": False, "error": err}, status=403)
+
+    _id = request.POST.get("id")
+    if not _id:
+        return JsonResponse({"ok": False, "error": "ID requerido"}, status=400)
+
+    hora_raw = request.POST.get("hora")
+    mensaje = (request.POST.get("mensaje") or "").strip()
+    fecha_raw = request.POST.get("fecha")
+    dias = (request.POST.get("dias") or "").strip()
+    activa_raw = request.POST.get("activa")
+
+    if not hora_raw:
+        return JsonResponse({"ok": False, "error": "Hora requerida"}, status=400)
+    if not mensaje:
+        return JsonResponse({"ok": False, "error": "Mensaje requerido"}, status=400)
+
+    hora = _parse_hora(hora_raw)
+    if not hora:
+        return JsonResponse({"ok": False, "error": "Hora inv?lida"}, status=400)
+
+    fecha = _parse_fecha(fecha_raw) if fecha_raw else None
+    activa = True if activa_raw is None else str(activa_raw).lower() in ("1", "true", "on", "si", "s?")
+
+    alarma = Alarma.objects.filter(id=_id, usuario=adulto_django).first()
+    if not alarma:
+        return JsonResponse({"ok": False, "error": "Alarma no encontrada"}, status=404)
+
+    alarma.hora = hora
+    alarma.mensaje = mensaje
+    alarma.fecha = fecha
+    alarma.dias = dias
+    alarma.activa = activa
+    alarma.save(update_fields=["hora", "mensaje", "fecha", "dias", "activa"])
+
+    return JsonResponse({"ok": True})
+
+#------eliminar alarma (cuidador)-----#
+@login_required
+@require_POST
+@csrf_exempt
+
+def eliminar_alarma_cuidador(request):
+    adulto_django, err = _cuidador_get_adulto_django(request)
+    if err:
+        return JsonResponse({"ok": False, "error": err}, status=403)
+
+    _id = request.POST.get("id")
+    if not _id:
+        return JsonResponse({"ok": False, "error": "ID requerido"}, status=400)
+
+    alarma = Alarma.objects.filter(id=_id, usuario=adulto_django).first()
+    if not alarma:
+        return JsonResponse({"ok": False, "error": "Alarma no encontrada"}, status=404)
+
+    alarma.delete()
+    return JsonResponse({"ok": True})
+
 #------eliminar alarma----#
 @login_required
 @require_POST

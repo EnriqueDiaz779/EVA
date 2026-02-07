@@ -35,6 +35,10 @@ urlpatterns = [
     path("alarmas/marcar-entregada/", views.marcar_entregada, name="marcar_entregada"),
     path("alarmas/reprogramar/", views.reprogramar_alarma, name="reprogramar_alarma"),
     path("api/alarmas/", views.obtener_alarmas, name="obtener_alarmas"),
+    path("api/cuidador/alarmas/", views.obtener_alarmas_cuidador, name="obtener_alarmas_cuidador"),
+    path("api/cuidador/alarmas/crear/", views.crear_alarma_cuidador, name="crear_alarma_cuidador"),
+    path("api/cuidador/alarmas/editar/", views.editar_alarma_cuidador, name="editar_alarma_cuidador"),
+    path("api/cuidador/alarmas/eliminar/", views.eliminar_alarma_cuidador, name="eliminar_alarma_cuidador"),
     path("api/alarmas/eliminar/", views.eliminar_alarma_ajax, name="eliminar_alarma_ajax"),
     path("api/alarmas/eliminar-todas/", views.eliminar_todas_alarmas_ajax, name="eliminar_todas_alarmas_ajax"),
 
