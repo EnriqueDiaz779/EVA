@@ -164,6 +164,8 @@ VAPID_PRIVATE_KEY = "SmThTKQNVOgEk8CQOQGd98oNEFr7TP75aOiiifkSNBs"
 # Carpeta donde Django los reunirá con collectstatic
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+MAPBOX_TOKEN_PUBLIC = os.getenv("MAPBOX_TOKEN_PUBLIC", "")
+
 # ==================
 # Configuración de la base de datos MySQL
 # ==================

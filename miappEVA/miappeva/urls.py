@@ -17,6 +17,12 @@ urlpatterns = [
     path("procesar-pago/", views.procesar_pago, name="procesar_pago"),
     path("cuidador/vincular/", views.vincular_adulto_por_codigo, name="vincular_adulto_por_codigo"),
     path("cuidador/cambiar-adulto/", views.cambiar_adulto_actual, name="cambiar_adulto_actual"),
+    
+    path("ubicacion/estado/", views.ubicacion_estado, name="ubicacion_estado"),
+    path("ubicacion/toggle/", views.ubicacion_toggle, name="ubicacion_toggle"),
+    path("ubicacion/ping/", views.ubicacion_ping, name="ubicacion_ping"),
+    path("cuidador/ubicacion/ultima/", views.cuidador_ultima_ubicacion, name="cuidador_ultima_ubicacion"),
+
 
     #--------flutter-----------#
     path("api/v1/auth/register/cuidador/", views.api_v1_register_cuidador),

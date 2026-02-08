@@ -1148,20 +1148,23 @@ def interfaz_cuidador(request):
                 )
 
     return render(
-        request,
-        "miapp/Interfaz_cuidador.html",
-        {
-            "cuidador_nombre": nombre,
-            "cuidador_correo": correo,
-            "cuidador_telefono": telefono,
-            "adulto_vinculado": adulto_vinculado,
-            "meds_adulto": meds_payload,
-            "bloqueado_por_vinculo": (adulto_vinculado is None),
+    request,
+    "miapp/Interfaz_cuidador.html",
+    {
+        "cuidador_nombre": nombre,
+        "cuidador_correo": correo,
+        "cuidador_telefono": telefono,
+        "adulto_vinculado": adulto_vinculado,
+        "meds_adulto": meds_payload,
+        "bloqueado_por_vinculo": (adulto_vinculado is None),
 
-            # ✅ PASO 3: manda la lista para que el template la pinte al cargar
-            "adultos_json": json.dumps(adultos),
-        },
-    )
+        # ✅ PASO 3: manda la lista para que el template la pinte al cargar
+        "adultos_json": json.dumps(adultos),
+
+        # ✅ PASO 4: MANDA EL TOKEN DE MAPBOX AL TEMPLATE
+        "mapbox_token": settings.MAPBOX_TOKEN_PUBLIC,
+    },
+)
 
 #------MYSQL IDENTIFICADOR------#
 def _mysql_get_usuario_por_identificador(identificador: str):
@@ -2093,7 +2096,7 @@ def eliminar_todas_alarmas_ajax(request):
         )
     except Exception as e:
         return JsonResponse({"ok": False, "error": str(e)}, status=500)
-3
+
 #------notificar SW-----#
 @csrf_exempt
 def notificar_serviceworker(request):
@@ -2189,6 +2192,182 @@ def send_push_notification(request):
             sub.delete()  # borra suscripción inválida
 
     return JsonResponse({"ok": True, "enviadas": total})
+
+#---------UBICACION---------#
+def _mysql_get_compartir_ubicacion(usuario_id: int) -> bool:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT compartir_ubicacion FROM Usuarios WHERE Id_Usuario=%s LIMIT 1",
+            [usuario_id],
+        )
+        row = cursor.fetchone()
+    return bool(row[0]) if row else False
+
+
+def _mysql_set_compartir_ubicacion(usuario_id: int, activo: bool):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE Usuarios SET compartir_ubicacion=%s WHERE Id_Usuario=%s",
+            [1 if activo else 0, usuario_id],
+        )
+    connection.commit()
+
+@login_required
+def ubicacion_estado(request):
+    usuario_id = _resolver_mysql_usuario_id(request)
+    if not usuario_id:
+        return JsonResponse({"ok": False, "error": "No pude resolver tu usuario MySQL."}, status=400)
+
+    activo = _mysql_get_compartir_ubicacion(usuario_id)
+    return JsonResponse({
+        "ok": True,
+        "compartir_ubicacion": activo,
+        "mapbox_token": getattr(settings, "MAPBOX_TOKEN_PUBLIC", ""),
+    })
+
+@login_required
+@require_POST
+def ubicacion_toggle(request):
+    usuario_id = _resolver_mysql_usuario_id(request)
+    if not usuario_id:
+        return JsonResponse({"ok": False, "error": "No pude resolver tu usuario MySQL."}, status=400)
+
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+    except Exception:
+        body = {}
+
+    # ✅ Soporta: { force: "on" | "off" }  (tu nuevo JS)
+    force = (body.get("force") or "").strip().lower()
+    if force in ("on", "true", "1"):
+        activar = True
+    elif force in ("off", "false", "0"):
+        activar = False
+    else:
+        # ✅ Soporta: { activar: true/false }  (tu versión anterior)
+        if "activar" in body:
+            activar = bool(body.get("activar"))
+        else:
+            # ✅ Si no mandan nada, hacemos toggle real
+            activar = not _mysql_get_compartir_ubicacion(usuario_id)
+
+    _mysql_set_compartir_ubicacion(usuario_id, activar)
+
+    return JsonResponse({"ok": True, "compartir_ubicacion": activar})
+
+@login_required
+@require_POST
+def ubicacion_ping(request):
+    usuario_id = _resolver_mysql_usuario_id(request)
+    if not usuario_id:
+        return JsonResponse({"ok": False, "error": "No pude resolver tu usuario MySQL."}, status=400)
+
+    # validar switch
+    if not _mysql_get_compartir_ubicacion(usuario_id):
+        return JsonResponse({"ok": False, "error": "Ubicación desactivada"}, status=403)
+
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+        lat = float(body.get("lat"))
+        lng = float(body.get("lng"))
+        precision = body.get("accuracy")
+        precision = float(precision) if precision is not None else None
+    except Exception:
+        return JsonResponse({"ok": False, "error": "Datos inválidos (lat/lng)."}, status=400)
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO ubicacion_actual (usuario_id, lat, lng, precision_m)
+            VALUES (%s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+              lat = VALUES(lat),
+              lng = VALUES(lng),
+              precision_m = VALUES(precision_m),
+              actualizado_en = CURRENT_TIMESTAMP
+        """, [usuario_id, lat, lng, precision])
+
+        # opcional si agregaste ubicacion_actualizada_en
+        try:
+            cursor.execute("""
+                UPDATE Usuarios SET ubicacion_actualizada_en=CURRENT_TIMESTAMP
+                WHERE Id_Usuario=%s
+            """, [usuario_id])
+        except Exception:
+            pass
+
+    connection.commit()
+    return JsonResponse({"ok": True})
+
+@login_required
+def cuidador_ultima_ubicacion(request):
+    ident = (request.user.username or "").strip()
+    mysql_user = verificar_usuario_en_bd(ident)
+    if not mysql_user or mysql_user.get("tipo") != "cuidador":
+        return JsonResponse({"ok": False, "error": "Solo cuidadores."}, status=403)
+
+    cuidador_id = mysql_user["id"]
+    adulto = _mysql_get_vinculo_activo_cuidador(cuidador_id)
+    if not adulto:
+        return JsonResponse({
+            "ok": True,
+            "adulto": None,
+            "compartir_ubicacion": False,
+            "sin_senal": True,
+            "ultima": None
+        })
+
+    adulto_id = adulto["id"]
+    compartir = _mysql_get_compartir_ubicacion(adulto_id)
+
+    # Si desactivó, no regresamos coordenadas (para privacidad)
+    if not compartir:
+        return JsonResponse({
+            "ok": True,
+            "adulto": adulto,
+            "compartir_ubicacion": False,
+            "sin_senal": False,
+            "ultima": None
+        })
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT lat, lng, precision_m, actualizado_en,
+                   TIMESTAMPDIFF(SECOND, actualizado_en, NOW()) AS diff_seg
+            FROM ubicacion_actual
+            WHERE usuario_id=%s
+            LIMIT 1
+        """, [adulto_id])
+        row = cursor.fetchone()
+
+    if not row:
+        return JsonResponse({
+            "ok": True,
+            "adulto": adulto,
+            "compartir_ubicacion": True,
+            "sin_senal": True,
+            "ultima": None
+        })
+
+    lat, lng, precision, actualizado_en, diff_seg = row
+
+    # ✅ “sin señal” si pasaron más de 3 min desde el último ping (según MySQL)
+    try:
+        sin_senal = (diff_seg is None) or (int(diff_seg) > 180)  # 180s = 3 min
+    except Exception:
+        sin_senal = False
+
+    return JsonResponse({
+        "ok": True,
+        "adulto": adulto,
+        "compartir_ubicacion": True,
+        "sin_senal": sin_senal,
+        "ultima": {
+            "lat": float(lat),
+            "lng": float(lng),
+            "accuracy": float(precision) if precision is not None else None,
+            "timestamp": actualizado_en.isoformat() if actualizado_en else None
+        }
+    })
 
 #-----flutter------#
 from django.views.decorators.csrf import csrf_exempt

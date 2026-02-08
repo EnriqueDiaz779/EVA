@@ -78,6 +78,40 @@
   </form>
 </div>
 </header>
+
+<!-- ✅ UBICACIÓN (ADULTO) -->
+<section class="mt-20 w-full px-3 sm:px-6">
+  <div class="mx-auto max-w-6xl bg-white rounded-3xl shadow-lg border border-gray-200 p-4 sm:p-6">
+    <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div class="text-center sm:text-left">
+        <p class="text-2xl sm:text-3xl font-extrabold text-blue-900">
+          Compartir ubicación
+        </p>
+        <p id="ubicacionAyudaTxt" class="text-lg sm:text-xl text-gray-600 font-semibold mt-1">
+          Activa tu ubicación para compartirla con tu cuidador.
+        </p>
+        <p id="ubicacionEstadoTxt" class="text-base sm:text-lg text-gray-500 font-semibold mt-2">
+          Estado: <span class="font-extrabold">Desactivado</span>
+        </p>
+      </div>
+
+      <button id="btnToggleUbicacion"
+              type="button"
+              class="w-full sm:w-auto px-6 py-4 rounded-2xl
+                     bg-blue-900 hover:bg-blue-950
+                     text-white font-extrabold text-2xl
+                     shadow-lg transition active:scale-95">
+        Activar ubicación
+      </button>
+    </div>
+
+    <div id="ubicacionBanner"
+         class="hidden mt-4 rounded-2xl border-2 p-4 text-lg sm:text-xl font-bold">
+      <!-- JS pone el contenido -->
+    </div>
+  </div>
+</section>
+
 <div class="flex-1 flex flex-col items-center justify-center">
 
   <!-- MAIN -->
@@ -101,7 +135,7 @@
   <!-- Cámara -->
   <div class="flex flex-col items-center">
     <img id="btnCamara"
-         src="{% static 'miapp/img/medicamento1.png' %}"
+         src="{% static 'miapp/img/medicamento.png' %}"
          alt="Escanear medicamento"
          class="w-60 h-60 md:w-56 md:h-56 cursor-pointer transition-transform transform hover:scale-110 active:scale-95 drop-shadow-2xl">
     <p class="mt-4 text-2xl font-bold text-gray-700 md:hidden">Lector Medicamentos</p>
@@ -119,7 +153,7 @@
   <!-- Lector receta -->
   <div class="flex flex-col items-center">
     <img id="btnLectorReceta"
-         src="{% static 'miapp/img/receta2.png' %}"
+         src="{% static 'miapp/img/receta.png' %}"
          alt="Lector receta" title="Presione para reconocer su receta"
          class="w-60 h-60 md:w-56 md:h-56 cursor-pointer transition-transform transform hover:scale-110 active:scale-95 drop-shadow-2xl">
     <p class="mt-4 text-2xl font-bold text-gray-700 md:hidden">Lector Receta</p>
@@ -577,8 +611,9 @@
       }
     }
 
-    setInterval(verificarAlarmasPendientes, 3000);
-    window.addEventListener("load", () => verificarAlarmasPendientes());
+    setInterval(() => {
+    if (!document.hidden) verificarAlarmasPendientes();
+  },  15000);
   </script>
 
   <!-- SERVICE WORKER Y NOTIFICACIONES -->
@@ -1022,35 +1057,7 @@ if ('serviceWorker' in navigator) {
     // 🧠 Guardar IDs de alarmas ya notificadas (para no repetir)
     const mostradas = new Set();
 
-    // 🔁 Cada 20 segundos revisa las alarmas pendientes
-    setInterval(async () => {
-      try {
-        const res = await fetch("/alarmas/pendientes/");
-        const data = await res.json();
 
-        if (data.ok && data.alarmas.length > 0) {
-          for (const alarma of data.alarmas) {
-            // Evita mostrar la misma alarma más de una vez
-            if (mostradas.has(alarma.id)) continue;
-
-            mostradas.add(alarma.id);
-
-            if (navigator.serviceWorker.controller) {
-              navigator.serviceWorker.controller.postMessage({
-                type: "SHOW_NOTIFICATION",
-                title: "⏰ EVA",
-                body: alarma.mensaje,
-                id: alarma.id,
-                tag: "alarma-" + alarma.id
-              });
-              console.log("📣 Notificación local mostrada:", alarma.mensaje);
-            }
-          }
-        }
-      } catch (err) {
-        console.error("⚠️ Error revisando alarmas:", err);
-      }
-    }, 20000);
   });
 }
 </script>
@@ -1361,6 +1368,217 @@ if ("serviceWorker" in navigator) {
   });
 
   render();
+})();
+</script>
+
+<script>
+(() => {
+  const btn = document.getElementById("btnToggleUbicacion");
+  const estadoTxt = document.getElementById("ubicacionEstadoTxt");
+  const ayudaTxt = document.getElementById("ubicacionAyudaTxt");
+  const banner = document.getElementById("ubicacionBanner");
+
+  if (!btn || !estadoTxt || !ayudaTxt || !banner) return;
+
+  const csrf = document.querySelector('meta[name="csrf-token"]')?.content || "";
+
+  let activo = window.EVA_UBICACION_ACTIVA ?? false;
+  renderUI();
+  let watchId = null;
+  let ultimoPingAt = 0;
+
+  function showBanner(msg, tipo="info") {
+    banner.classList.remove("hidden");
+    const estilos = {
+      info: "bg-blue-50 border-blue-200 text-blue-900",
+      ok: "bg-green-50 border-green-200 text-green-900",
+      warn: "bg-yellow-50 border-yellow-200 text-yellow-900",
+      err: "bg-red-50 border-red-200 text-red-900",
+    };
+    banner.className = `mt-4 rounded-2xl border-2 p-4 text-lg sm:text-xl font-bold ${estilos[tipo] || estilos.info}`;
+    banner.textContent = msg;
+  }
+
+  function hideBanner() {
+    banner.classList.add("hidden");
+  }
+
+  function renderUI() {
+    if (activo) {
+      btn.textContent = "Desactivar ubicación";
+      btn.classList.remove("bg-blue-900","hover:bg-blue-950");
+      btn.classList.add("bg-red-600","hover:bg-red-700");
+      estadoTxt.innerHTML = `Estado: <span class="font-extrabold text-green-700">Activado</span>`;
+      ayudaTxt.textContent = "Tu cuidador podrá ver tu ubicación en el mapa.";
+    } else {
+      btn.textContent = "Activar ubicación";
+      btn.classList.remove("bg-red-600","hover:bg-red-700");
+      btn.classList.add("bg-blue-900","hover:bg-blue-950");
+      estadoTxt.innerHTML = `Estado: <span class="font-extrabold text-gray-700">Desactivado</span>`;
+      ayudaTxt.textContent = "Activa tu ubicación para compartirla con tu cuidador.";
+    }
+  }
+
+  function stopWatch() {
+    if (watchId !== null) {
+      try { navigator.geolocation.clearWatch(watchId); } catch(_) {}
+      watchId = null;
+    }
+  }
+
+  async function postToggle(force) {
+  const resp = await fetch("/ubicacion/toggle/", {
+    method: "POST",
+    headers: {
+      "X-CSRFToken": csrf,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(force ? { force } : {})
+  });
+  return resp.json();
+}
+
+  async function postPing(payload) {
+    const resp = await fetch("/ubicacion/ping/", {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": csrf,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+    return resp.json();
+  }
+
+  function startWatch() {
+    if (!("geolocation" in navigator)) {
+      showBanner("Tu dispositivo no soporta ubicación.", "err");
+      activo = false;
+      renderUI();
+      return;
+    }
+
+    // Evita múltiples watchers
+    stopWatch();
+
+    showBanner("Ubicación activada. Buscando señal GPS…", "info");
+
+    watchId = navigator.geolocation.watchPosition(
+      async (pos) => {
+        // throttle: no más de 1 ping cada 4s aunque el GPS dispare muy rápido
+        const now = Date.now();
+        if (now - ultimoPingAt < 4000) return;
+        ultimoPingAt = now;
+
+        const payload = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          // opcional:
+          // heading: pos.coords.heading,
+          // speed: pos.coords.speed,
+          timestamp: pos.timestamp
+        };
+
+        try {
+          const r = await postPing(payload);
+          if (r?.ok) {
+            showBanner("Ubicación enviada al cuidador ✅", "ok");
+          } else {
+            showBanner("No se pudo enviar la ubicación. Intenta de nuevo.", "warn");
+          }
+        } catch (e) {
+          showBanner("Sin internet: no se pudo enviar la ubicación.", "warn");
+        }
+      },
+      (err) => {
+        // Errores típicos: 1 PERMISSION_DENIED, 2 POSITION_UNAVAILABLE, 3 TIMEOUT
+        if (err.code === 1) showBanner("Permiso de ubicación denegado. Actívalo en tu navegador.", "err");
+        else if (err.code === 2) showBanner("Sin señal GPS. Acércate a una ventana o sal al exterior.", "warn");
+        else if (err.code === 3) showBanner("Tiempo de espera agotado. Intenta de nuevo.", "warn");
+        else showBanner("Error de ubicación. Intenta de nuevo.", "warn");
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 5000,
+        timeout: 15000
+      }
+    );
+  }
+
+  btn.addEventListener("click", async () => {
+  btn.disabled = true;
+
+  try {
+    // Si ya está activo -> apagar directo
+    if (activo) {
+      await postToggle("off");
+      activo = false;
+      stopWatch();
+      renderUI();
+      showBanner("Ubicación desactivada. Tu cuidador ya no verá tu posición.", "warn");
+      try { hablar("Ubicación desactivada."); } catch(_) {}
+      return;
+    }
+
+    // Si está inactivo -> primero pedir GPS (para que “se vincule” a permisos)
+    if (!("geolocation" in navigator)) {
+      showBanner("Tu dispositivo no soporta ubicación.", "err");
+      return;
+    }
+
+    showBanner("Solicitando permiso de ubicación…", "info");
+
+    // Pedimos una ubicación rápida para validar permiso/funcionamiento
+    const pos = await new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 0
+      });
+    });
+
+    // Si llegó aquí, hay permiso y hay coordenadas -> ahora sí ACTIVAMOS en backend
+    const data = await postToggle("on");
+    if (!data?.ok || data.compartir_ubicacion !== true) {
+      showBanner(data?.error || "No se pudo activar en el servidor.", "err");
+      return;
+    }
+
+    activo = true;
+    renderUI();
+    showBanner("Ubicación activada. Enviando al cuidador…", "ok");
+    try { hablar("Ubicación activada."); } catch(_) {}
+
+    // Arranca watchPosition para enviar pings constantes
+    startWatch();
+
+    // Enviar un ping inmediato con la primera posición obtenida
+    try {
+      await postPing({
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+        timestamp: pos.timestamp
+      });
+    } catch(_) {}
+
+  } catch (err) {
+    // Si el usuario niega permiso o no hay señal, NO activamos backend
+    try { await postToggle("off"); } catch(_) {}
+    activo = false;
+    renderUI();
+
+    if (err?.code === 1) showBanner("Permiso de ubicación denegado. Actívalo en tu navegador.", "err");
+    else if (err?.code === 2) showBanner("Sin señal GPS. Acércate a una ventana o sal al exterior.", "warn");
+    else if (err?.code === 3) showBanner("Tiempo de espera agotado. Intenta de nuevo.", "warn");
+    else showBanner("No se pudo obtener ubicación. Intenta de nuevo.", "warn");
+  } finally {
+    btn.disabled = false;
+  }
+});
+  // UI inicial
+  renderUI();
 })();
 </script>
 
