@@ -15,6 +15,8 @@
 
   <style>
     body { font-family: 'Poppins', sans-serif; background-color: #dbdbdb; }
+    #map { position: relative; }
+    #map canvas { display: block; }
   </style>
 </head>
 
@@ -119,10 +121,6 @@
                 <p><span class="font-extrabold">Teléfono:</span><span class="text-gray-700"> {{ cuidador_telefono|default:"" }}</span></p>
               </div>
             </div>
-
-            <div class="w-20 h-20 rounded-full border border-gray-700 bg-white flex items-center justify-center shrink-0">
-              <span class="text-5xl">👤</span>
-            </div>
           </div>
 
           <div class="h-px bg-gray-200 mx-6"></div>
@@ -214,86 +212,126 @@
   </header>
 
   <!-- CUERPO -->
-  <main class="pt-20 pb-12 px-4 md:px-8 ml-0">
-  <div class="max-w-3xl mr-auto ml-0">
+  <main class="pt-20 pb-12 px-5">
+  <div class="w-full max-w-none">
 
-      <!-- LAYOUT (izq calendario, centro +) -->
-      <div class="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-6 items-start justify-start">
+    <div class="grid w-full grid-cols-1 lg:grid-cols-[800px_auto_1fr] lg:grid-rows-[auto_auto] gap-4 items-start">
 
-        <!-- IZQ: CALENDARIO/DÍA -->
-        <section class="bg-white rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
-          <div class="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-200">
-            <button id="btnDiaPrev"
-                    class="w-10 h-10 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 transition flex items-center justify-center"
-                    type="button" aria-label="Día anterior" title="Anterior">
-              <span class="text-2xl">←</span>
-            </button>
+      <!--CALENDARIO/DÍA -->
+    <section class="lg:row-start-1 lg:col-start-1 overflow-visible">
 
-            <div class="text-center">
-              <p id="fechaCompletaLabel" class="text-sm text-gray-600 font-semibold">02 de febrero de 2026</p>
-              <p id="diaActualLabel" class="text-2xl font-extrabold tracking-wide">LUNES</p>
-            </div>
+  <!-- TARJETA REAL -->
+  <div class="bg-white rounded-3xl shadow-2xl border border-gray-200 overflow-hidden pb-0">
 
-            <button id="btnDiaNext"
-                    class="w-10 h-10 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 transition flex items-center justify-center"
-                    type="button" aria-label="Día siguiente" title="Siguiente">
-              <span class="text-2xl">→</span>
-            </button>
-          </div>
+    <div class="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-200">
+      <button id="btnDiaPrev"
+              class="w-10 h-10 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 transition flex items-center justify-center"
+              type="button" aria-label="Día anterior" title="Anterior">
+        <span class="text-2xl">←</span>
+      </button>
 
-          <div class="p-4">
-            <div class="rounded-2xl border border-gray-200 overflow-hidden">
-              <div class="grid grid-cols-[1.3fr_.7fr] bg-blue-900 text-white text-sm font-extrabold">
-                <div class="px-3 py-2">LUGAR</div>
-                <div class="px-3 py-2 text-center">HORA</div>
-              </div>
+      <div class="text-center">
+        <p id="fechaCompletaLabel" class="text-sm text-gray-600 font-semibold">02 de febrero de 2026</p>
+        <p id="diaActualLabel" class="text-2xl font-extrabold tracking-wide">LUNES</p>
+      </div>
 
-              <div id="tablaCitasBody" class="divide-y divide-gray-200"></div>
-            </div>
+      <button id="btnDiaNext"
+              class="w-10 h-10 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 transition flex items-center justify-center"
+              type="button" aria-label="Día siguiente" title="Siguiente">
+        <span class="text-2xl">→</span>
+      </button>
+    </div>
 
-            <p id="emptyCitasHint" class="mt-4 text-sm text-gray-500 text-center hidden">
-              No hay alarmas ni citas para este día.
-            </p>
+        <div class="p-4 flex flex-col h-full">
 
-            <p class="mt-4 text-xs text-gray-400 text-center">
-              Tip: usa el botón <b>+</b> para agregar una cita y generar su alarma.
-            </p>
-          </div>
-        </section>
-
-        <!-- BOTÓN + -->
-        <div class="flex justify-center lg:pt-14">
-
-          <div class="relative">
-            <button id="btnAgregarEvento"
-                    type="button"
-                    class="w-16 h-16 rounded-2xl bg-gray-200 hover:bg-gray-300
-                           shadow-lg border border-gray-300
-                           flex items-center justify-center
-                           text-4xl font-extrabold text-gray-700
-                           transition active:scale-95">
-              +
-            </button>
-
-            <div id="menuAgregar"
-                 class="hidden absolute left-1/2 -translate-x-1/2 mt-3 w-48 bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden z-50">
-              <button id="btnCrearAlarma" type="button"
-                      class="w-full text-left px-4 py-3 text-sm font-extrabold text-blue-900 hover:bg-blue-50">
-                Crear alarma
-              </button>
-              <button id="btnCrearCita" type="button"
-                      class="w-full text-left px-4 py-3 text-sm font-extrabold text-gray-800 hover:bg-gray-50">
-                Crear cita
-              </button>
-            </div>
-          </div>
+      <!-- TABLA + SCROLL -->
+      <div class="rounded-2xl border border-gray-200 overflow-hidden flex flex-col min-h-0">
+        <div class="grid grid-cols-[1.3fr_.7fr] bg-blue-900 text-white text-sm font-extrabold">
+          <div class="px-3 py-2">NOMBRE</div>
+          <div class="px-3 py-2 text-center">HORA</div>
         </div>
 
+        <div class="flex-1 overflow-y-auto max-h-[420px]">
+          <div id="tablaCitasBody" class="divide-y divide-gray-200"></div>
+        </div>
+      </div>
+
+      <p id="emptyCitasHint" class="mt-3 text-sm text-gray-500 text-center hidden">
+        No hay alarmas ni citas para este día.
+      </p>
+
+      <div class="mt-auto pt-3 flex flex-col items-center">
+        <p class="text-xs text-gray-400 text-center">
+          Tip: usa el botón <b>+</b> para agregar una cita y generar su alarma.
+        </p>
+
+        <button id="btnAgregarEvento"
+                type="button"
+                class="mt-3 w-12 h-12 rounded-2xl bg-gray-200 hover:bg-gray-300
+                      shadow border border-gray-300
+                      flex items-center justify-center
+                      text-4xl font-extrabold text-gray-700
+                      transition active:scale-95">
+          +
+        </button>
+      </div>
+
+      <!-- MENÚ -->
+      <div id="menuAgregar"
+          class="hidden fixed w-52
+                  bg-white border border-gray-200 rounded-2xl shadow-2xl
+                  overflow-hidden z-[999999]">
+        <button id="btnCrearAlarma" type="button"
+                class="w-full text-left px-4 py-3 text-sm font-extrabold text-gray-800 hover:bg-blue-50">
+          Crear alarma
+        </button>
+        <button id="btnCrearCita" type="button"
+                class="w-full text-left px-4 py-3 text-sm font-extrabold text-gray-800 hover:bg-gray-50">
+          Crear cita
+        </button>
       </div>
     </div>
-  </main>
+</section>
 
-  <footer class="fixed bottom-0 left-0 right-0 h-7 bg-blue-900"></footer>
+      <!-- MAPA -->
+      <section class="bg-white rounded-3xl shadow-2xl border border-gray-200 overflow-hidden self-start lg:row-span-2 lg:col-start-3">
+        <div class="px-4 py-3 bg-gray-50 border-b border-gray-200">
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-xl sm:text-2xl shrink-0">📍</span>
+
+            <!-- título responsive -->
+            <p class="font-extrabold text-base sm:text-lg leading-tight truncate">
+              Ubicación del Adulto Mayor
+            </p>
+          </div>
+
+          <!-- última actualización: baja de línea en móvil, a la derecha en desktop -->
+          <p id="ubicacionTxt"
+            class="text-[11px] sm:text-xs text-gray-500 font-semibold
+                    sm:text-right leading-tight">
+            Última actualización: --
+          </p>
+        </div>
+      </div>
+      
+        <div id="ubicacionAlerta"
+        class="hidden px-4 py-20 text-xs sm:text-sm font-semibold border-b leading-snug">
+    </div>
+
+        <div class="p-4 md:p-6">
+          <div id="mapWrap" class="relative w-full rounded-2xl overflow-hidden">
+            <div id="map" class="block w-full h-[240px] sm:h-[320px] lg:h-[500px]"></div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</main>
+
+  <footer class="fixed bottom-0 left-0 right-0 h-7 bg-blue-900 z-50"></footer>
+
 </div>
 
 {% csrf_token %}
@@ -469,20 +507,6 @@
     </div>
   </div>
 </div>
-
-<section class="mt-8 bg-white rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
-  <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-    <div class="flex items-center gap-2">
-      <span class="text-2xl">📍</span>
-      <p class="font-extrabold text-lg">Ubicación del adulto</p>
-    </div>
-    <p id="ubicacionTxt" class="text-xs text-gray-500 font-semibold">Última actualización: --</p>
-  </div>
-
-  <div id="ubicacionAlerta" class="hidden px-4 py-3 text-sm font-extrabold border-b"></div>
-
-  <div id="map" class="w-full h-[420px] md:h-[520px]"></div>
-</section>
 
 <script>
   // ===== Referencias UI (header + perfil + bloqueo) =====
@@ -752,10 +776,6 @@
 </script>
 
 <script>
-  // =============================
-  // CALENDARIO + CITAS (solo modal)
-  // =============================
-
   const DIAS = ["DOMINGO","LUNES","MARTES","MIÉRCOLES","JUEVES","VIERNES","SÁBADO"];
   const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
   const DIAS_ES = ["dom","lun","mar","mie","jue","vie","sab"];
@@ -1016,10 +1036,75 @@
     document.body.classList.remove("overflow-hidden");
   }
 
+  function posicionarMenuAgregar() {
+  if (!btnAgregarEvento || !menuAgregar) return;
+
+  const r = btnAgregarEvento.getBoundingClientRect();
+
+  // Medimos el menú (temporalmente visible) para evitar que se salga de pantalla
+  menuAgregar.classList.remove("hidden");
+  const mw = menuAgregar.offsetWidth;
+  const mh = menuAgregar.offsetHeight;
+
+  // Queremos que quede centrado y abajo del botón
+  let left = r.left + (r.width / 2) - (mw / 2);
+  let top  = r.bottom + 12;
+
+  // Clamp horizontal (que no se salga)
+  const padding = 12;
+  const maxLeft = window.innerWidth - mw - padding;
+  if (left < padding) left = padding;
+  if (left > maxLeft) left = maxLeft;
+
+  // Si por alguna razón no cabe abajo, lo ponemos arriba del botón
+  if (top + mh > window.innerHeight - padding) {
+    top = r.top - mh - 12;
+  }
+
+  menuAgregar.style.left = `${left}px`;
+  menuAgregar.style.top  = `${top}px`;
+
+  // Si no lo querías abrir ahorita, lo ocultas (esto lo controla el toggle)
+}
+
+function abrirMenuAgregar() {
+  if (!menuAgregar) return;
+  posicionarMenuAgregar();
+  menuAgregar.classList.remove("hidden");
+}
+
+function cerrarMenuAgregar() {
+  menuAgregar?.classList.add("hidden");
+}
+
   btnAgregarEvento?.addEventListener("click", (e) => {
+    e.preventDefault();
     e.stopPropagation();
-    menuAgregar?.classList.toggle("hidden");
+
+    const estabaAbierto = menuAgregar && !menuAgregar.classList.contains("hidden");
+    cerrarMenuAgregar();
+
+    if (!estabaAbierto) abrirMenuAgregar();
   });
+
+  // No cerrar si das click dentro del menú
+  menuAgregar?.addEventListener("click", (e) => e.stopPropagation());
+
+  // Cerrar al click afuera
+  document.addEventListener("click", () => cerrarMenuAgregar());
+
+  // Cerrar con Escape
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") cerrarMenuAgregar();
+  });
+
+  // Si cambias tamaño de ventana y el menú está abierto, reposiciona
+  window.addEventListener("resize", () => {
+    if (menuAgregar && !menuAgregar.classList.contains("hidden")) {
+      posicionarMenuAgregar();
+    }
+  });
+
   btnCerrarModalCita?.addEventListener("click", closeModalCita);
   modalCita?.addEventListener("click", (e) => { if (e.target === modalCita) closeModalCita(); });
 
@@ -1038,12 +1123,6 @@
     closeModalAlarma();
     openModalCita();
   });
-
-  document.addEventListener("click", () => {
-    menuAgregar?.classList.add("hidden");
-  });
-
-  menuAgregar?.addEventListener("click", (e) => e.stopPropagation());
 
   btnCerrarModalAlarma?.addEventListener("click", closeModalAlarma);
   modalAlarma?.addEventListener("click", (e) => { if (e.target === modalAlarma) closeModalAlarma(); });
@@ -1157,7 +1236,7 @@
       ok: "bg-green-50 border-green-200 text-green-900",
       info: "bg-blue-50 border-blue-200 text-blue-900"
     };
-    alerta.className = `px-4 py-3 text-sm font-extrabold border-b ${estilos[tipo] || estilos.warn}`;
+    alerta.className = `px-4 py-2 text-xs sm:text-sm font-semibold border-b leading-snug ${estilos[tipo] || estilos.warn}`;
     alerta.textContent = msg;
   }
 
@@ -1185,6 +1264,14 @@
   });
 
   map.addControl(new mapboxgl.NavigationControl(), "top-right");
+
+      setTimeout(() => map.resize(), 100);
+
+    map.on("load", () => {
+      map.resize();                 // 👈 clave
+      fetchUltimaUbicacion();
+      setInterval(fetchUltimaUbicacion, 5000);
+    });
 
   let marker = null;
   let yaCentro = false;
@@ -1243,10 +1330,10 @@
       }
 
       if (data.sin_senal === true && minutos !== null) {
-      const msg = (minutos <= 0)
-        ? "Última ubicación conocida (hace unos segundos)"
-        : `Última ubicación conocida (hace ${minutos} min)`;
-      showAlert(msg, "warn");
+      showAlert(
+        "Sin señal en este momento.",
+        "warn"
+      );
     } else {
       hideAlert();
     }
@@ -1255,11 +1342,6 @@
       showAlert("Error de conexión al servidor (ubicación).", "warn");
     }
   }
-
-  map.on("load", () => {
-    fetchUltimaUbicacion();
-    setInterval(fetchUltimaUbicacion, 5000);
-  });
 })();
 </script>
 
