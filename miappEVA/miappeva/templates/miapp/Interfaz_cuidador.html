@@ -318,10 +318,61 @@
         <div id="ubicacionAlerta"
         class="hidden px-4 py-20 text-xs sm:text-sm font-semibold border-b leading-snug">
     </div>
-
+        
+        <!-- Historial abajo del mapa -->
         <div class="p-4 md:p-6">
           <div id="mapWrap" class="relative w-full rounded-2xl overflow-hidden">
-            <div id="map" class="block w-full h-[240px] sm:h-[320px] lg:h-[500px]"></div>
+            <div id="map" class="block w-full h-[200px] sm:h-[300px] lg:h-[500px]"></div>
+          </div>
+
+          <!-- CONTROLES FINOS -->
+          <div class="mt-3 flex justify-center">
+            <div class="inline-flex items-center gap-2
+                        bg-orange-500 text-white
+                        rounded-full shadow-md
+                        px-2 py-1.5
+                        border border-white-950/30">
+
+              <!-- Toggle Ruta -->
+              <button
+                id="btnRutaToggle"
+                type="button"
+                class="inline-flex items-center gap-2
+                      h-9 px-3 rounded-full
+                      bg-white/10 hover:bg-white/20
+                      text-black font-extrabold text-[18px]
+                      transition active:scale-95
+                      focus:outline-none focus:ring-2 focus:ring-white/30"
+                aria-pressed="false"
+                title="Mostrar u ocultar ruta"
+              >
+                <span class="text-2xl leading-none">🧭</span>
+                <span>Ruta</span>
+
+                <!-- ON / OFF -->
+                <span id="rutaMini"
+                      class="ml-1 inline-flex items-center justify-center
+                            px-2 py-0.5 rounded-full
+                            text-[15px] font-extrabold
+                            bg-white/20 text-black">
+                  OFF
+                </span>
+              </button>
+
+              <!-- Rango fijo 24h -->
+              <span
+                id="histHorasLabel"
+                class="h-8 px-3 rounded-full
+                      border border-white/20
+                      bg-white/10
+                      text-black font-semibold text-[15px]
+                      inline-flex items-center"
+                title="Rango fijo"
+              >
+                24 h
+              </span>
+
+            </div>
           </div>
         </div>
       </section>
@@ -507,6 +558,8 @@
     </div>
   </div>
 </div>
+
+
 
 <script>
   // ===== Referencias UI (header + perfil + bloqueo) =====
@@ -1263,6 +1316,8 @@ function cerrarMenuAgregar() {
     zoom: 13
   });
 
+  window.map = map;
+
   map.addControl(new mapboxgl.NavigationControl(), "top-right");
 
       setTimeout(() => map.resize(), 100);
@@ -1342,6 +1397,131 @@ function cerrarMenuAgregar() {
       showAlert("Error de conexión al servidor (ubicación).", "warn");
     }
   }
+})();
+</script>
+
+<script>
+(() => {
+  const btnToggle = document.getElementById("btnRutaToggle");
+  const mini      = document.getElementById("rutaMini");
+
+  const SRC_ID  = "historial-src";
+  const LINE_ID = "historial-line";
+  const PTS_ID  = "historial-pts";
+
+  let rutaOn = false;
+
+  function setUI(on) {
+    rutaOn = !!on;
+    btnToggle?.setAttribute("aria-pressed", rutaOn ? "true" : "false");
+    if (mini) mini.textContent = rutaOn ? "ON" : "OFF";
+  }
+
+  function limpiarHistorial() {
+    if (!window.map) return;
+    try {
+      if (map.getLayer(PTS_ID)) map.removeLayer(PTS_ID);
+      if (map.getLayer(LINE_ID)) map.removeLayer(LINE_ID);
+      if (map.getSource(SRC_ID)) map.removeSource(SRC_ID);
+    } catch {}
+  }
+
+  function boundsFromCoords(coords) {
+    const b = new mapboxgl.LngLatBounds(coords[0], coords[0]);
+    coords.forEach(c => b.extend(c));
+    return b;
+  }
+
+  async function cargarHistorial() {
+    if (!window.map) return;
+
+    const horas = 24; // 🔒 FIJO A 24 HORAS
+
+    const res = await fetch(`/cuidador/ubicacion/historial/?horas=${horas}&limite=1200`);
+    const data = await res.json();
+
+    if (!data.ok) {
+      alert(data.error || "Error cargando historial");
+      return;
+    }
+
+    if (data.compartir_ubicacion === false) {
+      alert("El adulto tiene la ubicación desactivada.");
+      return;
+    }
+
+    const puntos = data.puntos || [];
+    if (!puntos.length) {
+      alert("No hay puntos en las últimas 24 horas.");
+      limpiarHistorial();
+      return;
+    }
+
+    const coords = puntos.map(p => [p.lng, p.lat]);
+
+    if (!map.isStyleLoaded()) {
+      await new Promise(resolve => map.once("idle", resolve));
+    }
+
+    limpiarHistorial();
+
+    const geo = {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          properties: { kind: "line" },
+          geometry: { type: "LineString", coordinates: coords }
+        },
+        {
+          type: "Feature",
+          properties: { kind: "point", label: "Inicio" },
+          geometry: { type: "Point", coordinates: coords[0] }
+        },
+        {
+          type: "Feature",
+          properties: { kind: "point", label: "Último" },
+          geometry: { type: "Point", coordinates: coords[coords.length - 1] }
+        }
+      ]
+    };
+
+    map.addSource(SRC_ID, { type: "geojson", data: geo });
+
+    map.addLayer({
+      id: LINE_ID,
+      type: "line",
+      source: SRC_ID,
+      filter: ["==", ["get", "kind"], "line"],
+      paint: { "line-width": 5, "line-opacity": 0.9 }
+    });
+
+    map.addLayer({
+      id: PTS_ID,
+      type: "circle",
+      source: SRC_ID,
+      filter: ["==", ["get", "kind"], "point"],
+      paint: { "circle-radius": 7, "circle-opacity": 0.95 }
+    });
+
+    map.fitBounds(boundsFromCoords(coords), {
+      padding: 40,
+      maxZoom: 16
+    });
+  }
+
+  btnToggle?.addEventListener("click", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const next = !rutaOn;
+    setUI(next);
+
+    if (next) await cargarHistorial();
+    else limpiarHistorial();
+  });
+
+  setUI(false);
 })();
 </script>
 

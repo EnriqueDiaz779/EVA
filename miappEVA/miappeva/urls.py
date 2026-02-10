@@ -22,6 +22,7 @@ urlpatterns = [
     path("ubicacion/toggle/", views.ubicacion_toggle, name="ubicacion_toggle"),
     path("ubicacion/ping/", views.ubicacion_ping, name="ubicacion_ping"),
     path("cuidador/ubicacion/ultima/", views.cuidador_ultima_ubicacion, name="cuidador_ultima_ubicacion"),
+    path("cuidador/ubicacion/historial/", views.cuidador_historial_ubicacion, name="cuidador_historial_ubicacion"),
 
 
     #--------flutter-----------#

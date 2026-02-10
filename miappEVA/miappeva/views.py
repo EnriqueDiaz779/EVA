@@ -37,6 +37,7 @@ from django.views.decorators.http import require_POST
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
+import math
 
 def _resolver_mysql_usuario_id(request):
     ident = (request.user.username or "").strip()
@@ -1659,12 +1660,12 @@ def upload_temporal(request):
         if not f:
             return JsonResponse({"ok": False, "error": "No llegó la imagen."}, status=400)
 
-        # ✅ Validar mime simple (de la versión 1)
+        # Validar mime simple (de la versión 1)
         content_type = (getattr(f, "content_type", "") or "").lower()
         if not content_type.startswith("image/"):
             return JsonResponse({"ok": False, "error": "Formato no válido."}, status=400)
 
-        # ✅ (Opcional) Comprimir/redimensionar ANTES de guardar (de la versión 1)
+        # (Opcional) Comprimir/redimensionar ANTES de guardar (de la versión 1)
         # Esto reduce peso y acelera el análisis.
         try:
             img = Image.open(f).convert("RGB")
@@ -2262,7 +2263,6 @@ def ubicacion_ping(request):
     if not usuario_id:
         return JsonResponse({"ok": False, "error": "No pude resolver tu usuario MySQL."}, status=400)
 
-    # validar switch
     if not _mysql_get_compartir_ubicacion(usuario_id):
         return JsonResponse({"ok": False, "error": "Ubicación desactivada"}, status=403)
 
@@ -2275,6 +2275,7 @@ def ubicacion_ping(request):
     except Exception:
         return JsonResponse({"ok": False, "error": "Datos inválidos (lat/lng)."}, status=400)
 
+    # 1) siempre actualiza ubicacion_actual (tu comportamiento actual)
     with connection.cursor() as cursor:
         cursor.execute("""
             INSERT INTO ubicacion_actual (usuario_id, lat, lng, precision_m)
@@ -2286,7 +2287,6 @@ def ubicacion_ping(request):
               actualizado_en = CURRENT_TIMESTAMP
         """, [usuario_id, lat, lng, precision])
 
-        # opcional si agregaste ubicacion_actualizada_en
         try:
             cursor.execute("""
                 UPDATE Usuarios SET ubicacion_actualizada_en=CURRENT_TIMESTAMP
@@ -2295,8 +2295,41 @@ def ubicacion_ping(request):
         except Exception:
             pass
 
+    GUARDAR_CADA_SEG = 180
+    GUARDAR_SI_MOVIO_M = 30
+
+    ultimo = _mysql_get_ultimo_punto_historial(usuario_id)
+    debe_guardar = False
+
+    if not ultimo:
+        debe_guardar = True
+    else:
+        # tiempo
+        try:
+            diff = (timezone.now() - ultimo["creado_en"]).total_seconds()
+        except Exception:
+            diff = 999999
+        if diff >= GUARDAR_CADA_SEG:
+            debe_guardar = True
+        else:
+            # distancia
+            try:
+                dist_m = _haversine_m(ultimo["lat"], ultimo["lng"], lat, lng)
+                if dist_m >= GUARDAR_SI_MOVIO_M:
+                    debe_guardar = True
+            except Exception:
+                pass
+
+    if debe_guardar:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO ubicacion_historial (usuario_id, lat, lng, precision_m)
+                VALUES (%s, %s, %s, %s)
+            """, [usuario_id, lat, lng, precision])
+        # (no pasa nada si guardas 1 punto cada 3 min aprox)
+
     connection.commit()
-    return JsonResponse({"ok": True})
+    return JsonResponse({"ok": True, "guardado_historial": bool(debe_guardar)})
 
 @login_required
 def cuidador_ultima_ubicacion(request):
@@ -2350,7 +2383,7 @@ def cuidador_ultima_ubicacion(request):
 
     lat, lng, precision, actualizado_en, diff_seg = row
 
-    # ✅ “sin señal” si pasaron más de 3 min desde el último ping (según MySQL)
+    # “sin señal” si pasaron más de 3 min desde el último ping (según MySQL)
     try:
         sin_senal = (diff_seg is None) or (int(diff_seg) > 180)  # 180s = 3 min
     except Exception:
@@ -2367,6 +2400,82 @@ def cuidador_ultima_ubicacion(request):
             "accuracy": float(precision) if precision is not None else None,
             "timestamp": actualizado_en.isoformat() if actualizado_en else None
         }
+    })
+
+def _haversine_m(lat1, lng1, lat2, lng2):
+    R = 6371000.0
+    phi1 = math.radians(lat1); phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lng2 - lng1)
+    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
+    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1-a))
+
+def _mysql_get_ultimo_punto_historial(usuario_id: int):
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT lat, lng, creado_en
+            FROM ubicacion_historial
+            WHERE usuario_id=%s
+            ORDER BY creado_en DESC
+            LIMIT 1
+        """, [usuario_id])
+        row = cursor.fetchone()
+    if not row:
+        return None
+    return {"lat": float(row[0]), "lng": float(row[1]), "creado_en": row[2]}
+
+@login_required
+def cuidador_historial_ubicacion(request):
+    ident = (request.user.username or "").strip()
+    mysql_user = verificar_usuario_en_bd(ident)
+    if not mysql_user or mysql_user.get("tipo") != "cuidador":
+        return JsonResponse({"ok": False, "error": "Solo cuidadores."}, status=403)
+
+    cuidador_id = mysql_user["id"]
+    adulto = _mysql_get_vinculo_activo_cuidador(cuidador_id)
+    if not adulto:
+        return JsonResponse({"ok": True, "adulto": None, "puntos": []})
+
+    adulto_id = adulto["id"]
+
+    if not _mysql_get_compartir_ubicacion(adulto_id):
+        return JsonResponse({"ok": True, "adulto": adulto, "compartir_ubicacion": False, "puntos": []})
+
+    horas = 24  # 🔒 fijo siempre
+
+    limite = request.GET.get("limite")
+    try:
+        limite = int(limite) if limite else 500
+        limite = max(50, min(limite, 2000))
+    except Exception:
+        limite = 500
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT lat, lng, precision_m, creado_en
+            FROM ubicacion_historial
+            WHERE usuario_id=%s
+              AND creado_en >= (NOW() - INTERVAL %s HOUR)
+            ORDER BY creado_en ASC
+            LIMIT %s
+        """, [adulto_id, horas, limite])
+        rows = cursor.fetchall()
+
+    puntos = [
+        {
+            "lat": float(r[0]),
+            "lng": float(r[1]),
+            "accuracy": float(r[2]) if r[2] is not None else None,
+            "timestamp": r[3].isoformat() if r[3] else None,
+        }
+        for r in rows
+    ]
+
+    return JsonResponse({
+        "ok": True,
+        "adulto": adulto,
+        "compartir_ubicacion": True,
+        "puntos": puntos
     })
 
 #-----flutter------#
