@@ -1,95 +1,109 @@
-// --- EVA Service Worker Mejorado ---
-// Cache + notificaciones con acciones
-const CACHE_NAME = "eva-cache-v3";
+﻿const CACHE_NAME = "eva-cache-v4";
 const CORE_ASSETS = ["/", "/manifest.json"];
 
-// === INSTALACIÓN ===
 self.addEventListener("install", (event) => {
-  console.log("📦 Instalando EVA Service Worker...");
-  event.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(CORE_ASSETS)));
+  event.waitUntil(caches.open(CACHE_NAME).then((c) => c.addAll(CORE_ASSETS)));
   self.skipWaiting();
 });
 
-// === ACTIVACIÓN ===
 self.addEventListener("activate", (event) => {
-  console.log("⚡ Activando EVA Service Worker...");
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.map(k => (k !== CACHE_NAME ? caches.delete(k) : null)))
-    )
+    caches.keys().then((keys) => Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null))))
   );
   self.clients.claim();
 });
 
-// === ESTRATEGIA NETWORK-FIRST ===
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
 
   event.respondWith(
     fetch(req)
-      .then(res => {
+      .then((res) => {
         const clone = res.clone();
-        caches.open(CACHE_NAME).then(c => c.put(req, clone));
+        caches.open(CACHE_NAME).then((c) => c.put(req, clone));
         return res;
       })
       .catch(() => caches.match(req))
   );
 });
 
-// === MOSTRAR NOTIFICACIÓN DESDE MENSAJE ===
+function buildNotification(payload = {}) {
+  const kind = (payload.kind || payload.type || "alarma").toString().toLowerCase();
+  const isEmergency = kind === "emergencia";
+  const title = payload.title || (isEmergency ? "SOS EVA" : "EVA");
+
+  const baseOptions = {
+    body: payload.body || "Tienes un aviso.",
+    icon: "/static/miapp/icons/icon-192.png",
+    badge: "/static/miapp/icons/icon-192.png",
+    tag: payload.tag || (isEmergency ? "eva-emergencia" : "eva-alert"),
+    requireInteraction: true,
+    data: {
+      url: payload.url || (isEmergency ? "/interfaz-cuidador/" : "/"),
+      id: payload.id || null,
+      kind,
+      id_emergencia: payload.id_emergencia || null,
+    },
+    vibrate: isEmergency ? [300, 120, 300, 120, 300] : [200, 100, 200],
+  };
+
+  if (!isEmergency) {
+    baseOptions.actions = [
+      { action: "tomada", title: "Tomada", icon: "/static/miapp/icons/check.png" },
+      { action: "omitir", title: "Omitir 5 min", icon: "/static/miapp/icons/repetir.png" },
+    ];
+  } else {
+    baseOptions.actions = [{ action: "ver", title: "Ver emergencia" }];
+  }
+
+  return { title, options: baseOptions };
+}
+
 self.addEventListener("message", async (event) => {
   const data = event.data || {};
   if (data.type !== "SHOW_NOTIFICATION") return;
-
-  const title = data.title || "⏰ EVA";
-  const options = {
-    body: data.body || "Tienes un aviso.",
-    icon: "/static/miapp/icons/icon-192.png",
-    badge: "/static/miapp/icons/icon-192.png",
-    vibrate: [200, 100, 200],
-    tag: data.tag || "eva-alert",
-    requireInteraction: true,
-    data: {
-      url: "/",
-      id: data.id || null,
-    },
-    actions: [
-      { action: "tomada", title: "✅ Tomada", icon: "/static/miapp/icons/check.png" },
-      { action: "omitir", title: "🔁 Omitir 5 min", icon: "/static/miapp/icons/repetir.png" }
-    ]
-  };
-
-  console.log("🔔 Mostrando notificación EVA:", title);
-  await self.registration.showNotification(title, options);
+  const notif = buildNotification(data);
+  await self.registration.showNotification(notif.title, notif.options);
 });
 
-// === CUANDO EL USUARIO INTERACTÚA CON LA NOTIFICACIÓN ===
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch (_) {
+    payload = {};
+  }
+  const notif = buildNotification(payload);
+  event.waitUntil(self.registration.showNotification(notif.title, notif.options));
+});
+
 self.addEventListener("notificationclick", (event) => {
-  console.log("👆 Clic en notificación:", event.action);
   event.notification.close();
   const { action, notification } = event;
   const id = notification.data?.id;
+  const kind = (notification.data?.kind || "").toLowerCase();
 
-  if (action === "tomada" && id) {
-    // Marca la alarma como entregada
-    event.waitUntil(marcarEntregada(id));
-    return;
+  if (kind !== "emergencia") {
+    if (action === "tomada" && id) {
+      event.waitUntil(marcarEntregada(id));
+      return;
+    }
+
+    if (action === "omitir" && id) {
+      event.waitUntil(reprogramarAlarma(id));
+      return;
+    }
   }
 
-  if (action === "omitir" && id) {
-    // Reprograma la alarma a +5 minutos
-    event.waitUntil(reprogramarAlarma(id));
-    return;
-  }
-
-  // Si no se presionó ninguna acción específica → abrir o enfocar la app
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      const targetUrl = notification.data?.url || "/";
       for (const client of clientList) {
-        if (client.url.includes("/") && "focus" in client) return client.focus();
+        if (client.url.includes(targetUrl) && "focus" in client) return client.focus();
       }
-      if (clients.openWindow) return clients.openWindow(notification.data?.url || "/");
+      if (clients.openWindow) return clients.openWindow(targetUrl);
+      return null;
     })
   );
 });
@@ -99,31 +113,24 @@ async function marcarEntregada(id) {
     await fetch("/alarmas/marcar-entregada/", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ id })
+      body: new URLSearchParams({ id }),
     });
-    console.log(`✅ Alarma #${id} marcada como entregada`);
-  } catch (err) {
-    console.error("❌ Error marcando entregada:", err);
-  }
+  } catch (_) {}
 }
 
 async function reprogramarAlarma(id) {
   try {
-    const resp = await fetch("/alarmas/reprogramar/", {   // ✅ ruta correcta
+    const resp = await fetch("/alarmas/reprogramar/", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ id })
+      body: new URLSearchParams({ id }),
     });
     const data = await resp.json();
-    console.log(`🔁 Alarma #${id} reprogramada +5 min → ${data.nueva_hora}`);
-    self.registration.showNotification("🔁 EVA", {
+    self.registration.showNotification("EVA", {
       body: "Alarma reprogramada para " + data.nueva_hora,
       icon: "/static/miapp/icons/repetir.png",
       vibrate: [150, 100, 150],
-      silent: true
+      silent: true,
     });
-  } catch (err) {
-    console.error("❌ Error reprogramando alarma:", err);
-  }
+  } catch (_) {}
 }
-

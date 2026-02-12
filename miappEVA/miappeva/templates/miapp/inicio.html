@@ -181,6 +181,18 @@
 </main>
 </div>  
 
+<!-- BOTON SOS -->
+<div class="fixed bottom-5 right-5 z-[70] flex flex-col items-end gap-2">
+  <p id="sosHint" class="text-sm font-bold text-red-900 bg-red-100 border border-red-300 rounded-lg px-3 py-1 shadow">
+    Mantén presionado 2 segundos
+  </p>
+  <button id="btnSOS"
+          type="button"
+          class="w-24 h-24 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 text-white font-extrabold text-3xl shadow-2xl border-4 border-white">
+    SOS
+  </button>
+</div>
+
 <!-- PANEL DE ALARMAS (RESPONSIVE) -->
 <div id="panelAlarmas"
      class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm
@@ -577,6 +589,29 @@
 
     // === Variables globales de control ===
     let alarmaEnCurso = false;
+    let alarmAudioCtx = null;
+
+    const ALARMA_AUDIO_URL = "{% static 'miapp/sonidos/alarmita.mp3' %}?v=20260212b";
+
+    function reproducirAlarmaFuerte() {
+      const audio = new Audio(ALARMA_AUDIO_URL);
+      audio.volume = 1.0;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) {
+        try {
+          alarmAudioCtx = alarmAudioCtx || new AC();
+          const src = alarmAudioCtx.createMediaElementSource(audio);
+          const gain = alarmAudioCtx.createGain();
+          gain.gain.value = 2.2;
+          src.connect(gain);
+          gain.connect(alarmAudioCtx.destination);
+          if (alarmAudioCtx.state === "suspended") {
+            alarmAudioCtx.resume().catch(() => {});
+          }
+        } catch (_) {}
+      }
+      audio.play().catch(err => console.warn("Error reproduciendo sonido:", err));
+    }
 
     async function verificarAlarmasPendientes() {
       try {
@@ -591,8 +626,7 @@
           console.log("Alarma disparada:", mensaje);
           alarmaEnCurso = true;
           hablar("Es hora de tu alarma! " + mensaje);
-          const audio = new Audio('/static/miapp/sonidos/alarma.mp3');
-          audio.play();
+          reproducirAlarmaFuerte();
 
           await mostrarNotificacionSW({
           type: "SHOW_NOTIFICATION",
@@ -1152,8 +1186,7 @@ if ("serviceWorker" in navigator) {
   // 🟡 Reproducir sonido desde el SW
   navigator.serviceWorker.addEventListener("message", event => {
     if (event.data?.action === "play_sound") {
-      const audio = new Audio("{% static 'miapp/sonidos/alarma.mp3' %}");
-      audio.play().catch(err => console.warn("Error reproduciendo sonido:", err));
+      reproducirAlarmaFuerte();
     }
   });
 }
@@ -1589,6 +1622,94 @@ if ("serviceWorker" in navigator) {
 });
   // UI inicial
   renderUI();
+})();
+</script>
+
+<script>
+(() => {
+  const btnSOS = document.getElementById("btnSOS");
+  const sosHint = document.getElementById("sosHint");
+  if (!btnSOS) return;
+
+  let holdTimer = null;
+  let holdTriggered = false;
+  let cooldownUntil = 0;
+
+  async function enviarSOS() {
+    const ahora = Date.now();
+    if (ahora < cooldownUntil) {
+      const seg = Math.ceil((cooldownUntil - ahora) / 1000);
+      const msg = `Espera ${seg} segundos para volver a enviar SOS.`;
+      sosHint.textContent = msg;
+      try { hablar(msg); } catch (_) {}
+      return;
+    }
+
+    btnSOS.disabled = true;
+    btnSOS.classList.add("opacity-70");
+    sosHint.textContent = "Enviando emergencia...";
+
+    try {
+      const token = document.querySelector("meta[name='csrf-token']")?.content || "";
+      const resp = await fetch("{% url 'crear_emergencia' %}", {
+        method: "POST",
+        headers: { "X-CSRFToken": token },
+      });
+      let data = null;
+      let raw = "";
+      try {
+        data = await resp.json();
+      } catch (_) {
+        raw = await resp.text();
+      }
+      if (!resp.ok || !data?.ok) {
+        const detalle = data?.error || raw || `Error HTTP ${resp.status}`;
+        throw new Error(detalle);
+      }
+
+      cooldownUntil = Date.now() + 45000;
+      sosHint.textContent = "SOS enviado al cuidador.";
+      try { hablar("Emergencia enviada al cuidador."); } catch (_) {}
+    } catch (e) {
+      const msg = String((e && e.message) || "No se pudo enviar SOS.");
+      sosHint.textContent = msg;
+      try { hablar(msg); } catch (_) {}
+      console.error("SOS error:", e);
+    } finally {
+      btnSOS.disabled = false;
+      btnSOS.classList.remove("opacity-70");
+      setTimeout(() => {
+        sosHint.textContent = "Mantén presionado 2 segundos";
+      }, 5000);
+    }
+  }
+
+  function beginHold() {
+    if (btnSOS.disabled) return;
+    holdTriggered = false;
+    sosHint.textContent = "Mantén... faltan 2 segundos";
+    holdTimer = setTimeout(() => {
+      holdTriggered = true;
+      enviarSOS();
+    }, 2000);
+  }
+
+  function endHold() {
+    if (holdTimer) {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+    }
+    if (!holdTriggered && !btnSOS.disabled) {
+      sosHint.textContent = "Mantén presionado 2 segundos";
+    }
+  }
+
+  btnSOS.addEventListener("mousedown", beginHold);
+  btnSOS.addEventListener("touchstart", beginHold, { passive: true });
+  btnSOS.addEventListener("mouseup", endHold);
+  btnSOS.addEventListener("mouseleave", endHold);
+  btnSOS.addEventListener("touchend", endHold);
+  btnSOS.addEventListener("touchcancel", endHold);
 })();
 </script>
 

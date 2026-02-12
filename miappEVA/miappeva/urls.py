@@ -48,6 +48,9 @@ urlpatterns = [
     path("api/cuidador/alarmas/eliminar/", views.eliminar_alarma_cuidador, name="eliminar_alarma_cuidador"),
     path("api/alarmas/eliminar/", views.eliminar_alarma_ajax, name="eliminar_alarma_ajax"),
     path("api/alarmas/eliminar-todas/", views.eliminar_todas_alarmas_ajax, name="eliminar_todas_alarmas_ajax"),
+    path("api/emergencia/crear/", views.crear_emergencia, name="crear_emergencia"),
+    path("api/cuidador/emergencias/pendientes/", views.cuidador_emergencias_pendientes, name="cuidador_emergencias_pendientes"),
+    path("api/cuidador/emergencias/estado/", views.actualizar_estado_emergencia, name="actualizar_estado_emergencia"),
 
     # --- Cámara / Escáner ---
     path("upload-temporal/", views.upload_temporal, name="upload_temporal"),

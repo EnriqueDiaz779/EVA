@@ -38,6 +38,13 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 import math
+try:
+    from pywebpush import webpush, WebPushException
+except Exception:
+    webpush = None
+
+    class WebPushException(Exception):
+        pass
 
 def _resolver_mysql_usuario_id(request):
     ident = (request.user.username or "").strip()
@@ -958,8 +965,8 @@ def _mysql_set_vinculo_activo(cuidador_id: int, adulto_id: int, codigo: str):
 
     connection.commit()
 
-def _django_user_from_mysql_adulto(nombre: str, correo: str):
-    """Mapea el adulto MySQL a un User de Django para leer MedicamentoReconocido."""
+def _django_user_from_mysql_usuario(nombre: str, correo: str):
+    """Mapea un usuario MySQL a un User de Django por correo o nombre."""
     if correo:
         u = User.objects.filter(username=correo.lower()).first()
         if u:
@@ -972,6 +979,58 @@ def _django_user_from_mysql_adulto(nombre: str, correo: str):
         return User.objects.filter(username=(nombre or "").strip().lower()).first()
 
     return None
+
+
+def _django_user_from_mysql_adulto(nombre: str, correo: str):
+    """Compat: mantiene el helper previo para usos existentes."""
+    return _django_user_from_mysql_usuario(nombre, correo)
+
+
+def _mysql_get_cuidador_activo_por_adulto(adulto_id: int):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT a.Cuidador_id, u.Nombre_Completo, u.correo "
+            "FROM adulto_cuidador a "
+            "JOIN Usuarios u ON u.Id_Usuario=a.Cuidador_id "
+            "WHERE a.Adulto_id=%s AND a.Activo=1 "
+            "ORDER BY a.fecha_asignacion DESC LIMIT 1",
+            [adulto_id],
+        )
+        row = cursor.fetchone()
+    if not row:
+        return None
+    return {"id": row[0], "nombre": row[1], "correo": row[2]}
+
+
+def _enviar_webpush_a_usuario(django_user, payload: dict) -> int:
+    if webpush is None or not django_user:
+        return 0
+
+    subs = PushSubscription.objects.filter(usuario=django_user)
+    if not subs.exists():
+        return 0
+
+    vapid_private = getattr(settings, "VAPID_PRIVATE_KEY", None)
+    vapid_claims = {"sub": "mailto:tuequipo@eva.com"}
+    total = 0
+
+    for sub in subs:
+        try:
+            webpush(
+                subscription_info={
+                    "endpoint": sub.endpoint,
+                    "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
+                },
+                data=json.dumps(payload),
+                vapid_private_key=vapid_private,
+                vapid_claims=vapid_claims,
+            )
+            total += 1
+        except WebPushException as e:
+            print("⚠️ Error enviando push:", e)
+            sub.delete()
+
+    return total
 
 #------lista adultos mayores en perfil del cuidador------#
 def _mysql_list_adultos_cuidador(cuidador_id: int):
@@ -2193,6 +2252,196 @@ def send_push_notification(request):
             sub.delete()  # borra suscripción inválida
 
     return JsonResponse({"ok": True, "enviadas": total})
+
+
+@csrf_exempt
+@login_required
+@require_POST
+def crear_emergencia(request):
+    mysql_user = None
+    usuario_id = _resolver_mysql_usuario_id(request)
+    if usuario_id:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT Id_Usuario, Nombre_Completo, Tipo, correo, Telefono "
+                "FROM Usuarios WHERE Id_Usuario=%s LIMIT 1",
+                [usuario_id],
+            )
+            row = cursor.fetchone()
+            if row:
+                mysql_user = {"id": row[0], "nombre": row[1], "tipo": row[2], "correo": row[3], "telefono": row[4]}
+    if not mysql_user or mysql_user.get("tipo") != "adulto":
+        return JsonResponse({"ok": False, "error": "Solo adultos pueden emitir SOS."}, status=403)
+
+    adulto_id = mysql_user["id"]
+    cuidador = _mysql_get_cuidador_activo_por_adulto(adulto_id)
+    if not cuidador:
+        return JsonResponse({"ok": False, "error": "No hay cuidador vinculado activo."}, status=409)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT id_emergencia FROM emergencia "
+            "WHERE adulto_id=%s AND estado='enviada' AND creado_en >= (NOW() - INTERVAL 45 SECOND) "
+            "ORDER BY id_emergencia DESC LIMIT 1",
+            [adulto_id],
+        )
+        row_recent = cursor.fetchone()
+        if row_recent:
+            return JsonResponse(
+                {"ok": True, "duplicada": True, "id_emergencia": int(row_recent[0])},
+                status=200,
+            )
+
+        cursor.execute(
+            "SELECT lat, lng FROM ubicacion_actual WHERE usuario_id=%s LIMIT 1",
+            [adulto_id],
+        )
+        row_pos = cursor.fetchone()
+        lat = float(row_pos[0]) if row_pos and row_pos[0] is not None else None
+        lng = float(row_pos[1]) if row_pos and row_pos[1] is not None else None
+
+        cursor.execute(
+            "INSERT INTO emergencia (lat, lng, estado, creado_en, adulto_id, cuidador_id) "
+            "VALUES (%s, %s, 'enviada', NOW(), %s, %s)",
+            [lat, lng, adulto_id, cuidador["id"]],
+        )
+        emergencia_id = int(cursor.lastrowid)
+    connection.commit()
+
+    cuidador_django = _django_user_from_mysql_usuario(cuidador.get("nombre"), cuidador.get("correo"))
+    payload = {
+        "type": "EMERGENCIA",
+        "kind": "emergencia",
+        "title": "SOS EVA",
+        "body": f"{mysql_user.get('nombre') or 'Adulto'} solicitó ayuda urgente.",
+        "tag": f"emergencia-{emergencia_id}",
+        "url": "/interfaz-cuidador/",
+        "id_emergencia": emergencia_id,
+        "adulto_id": adulto_id,
+        "adulto_nombre": mysql_user.get("nombre") or "",
+        "lat": lat,
+        "lng": lng,
+    }
+    push_enviadas = _enviar_webpush_a_usuario(cuidador_django, payload)
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "id_emergencia": emergencia_id,
+            "push_enviadas": int(push_enviadas),
+            "cuidador": cuidador.get("nombre"),
+        }
+    )
+
+
+@login_required
+def cuidador_emergencias_pendientes(request):
+    mysql_user = None
+    usuario_id = _resolver_mysql_usuario_id(request)
+    if usuario_id:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT Id_Usuario, Nombre_Completo, Tipo, correo, Telefono "
+                "FROM Usuarios WHERE Id_Usuario=%s LIMIT 1",
+                [usuario_id],
+            )
+            row = cursor.fetchone()
+            if row:
+                mysql_user = {"id": row[0], "nombre": row[1], "tipo": row[2], "correo": row[3], "telefono": row[4]}
+    if not mysql_user or mysql_user.get("tipo") != "cuidador":
+        return JsonResponse({"ok": False, "error": "Solo cuidadores."}, status=403)
+
+    cuidador_id = mysql_user["id"]
+    adulto = _mysql_get_vinculo_activo_cuidador(cuidador_id)
+    if not adulto:
+        return JsonResponse({"ok": True, "emergencias": []})
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT id_emergencia, lat, lng, estado, creado_en, atendido_en "
+            "FROM emergencia "
+            "WHERE cuidador_id=%s AND adulto_id=%s AND estado IN ('enviada','vista') "
+            "ORDER BY creado_en DESC LIMIT 20",
+            [cuidador_id, adulto["id"]],
+        )
+        rows = cursor.fetchall()
+
+    emergencias = []
+    for r in rows:
+        emergencias.append(
+            {
+                "id_emergencia": int(r[0]),
+                "lat": float(r[1]) if r[1] is not None else None,
+                "lng": float(r[2]) if r[2] is not None else None,
+                "estado": r[3],
+                "creado_en": r[4].isoformat() if r[4] else None,
+                "atendido_en": r[5].isoformat() if r[5] else None,
+                "adulto": adulto,
+            }
+        )
+
+    return JsonResponse({"ok": True, "emergencias": emergencias})
+
+
+@csrf_exempt
+@login_required
+@require_POST
+def actualizar_estado_emergencia(request):
+    mysql_user = None
+    usuario_id = _resolver_mysql_usuario_id(request)
+    if usuario_id:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT Id_Usuario, Nombre_Completo, Tipo, correo, Telefono "
+                "FROM Usuarios WHERE Id_Usuario=%s LIMIT 1",
+                [usuario_id],
+            )
+            row = cursor.fetchone()
+            if row:
+                mysql_user = {"id": row[0], "nombre": row[1], "tipo": row[2], "correo": row[3], "telefono": row[4]}
+    if not mysql_user or mysql_user.get("tipo") != "cuidador":
+        return JsonResponse({"ok": False, "error": "Solo cuidadores."}, status=403)
+
+    payload = {}
+    try:
+        payload = json.loads((request.body or b"{}").decode("utf-8"))
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    emergencia_id = payload.get("id_emergencia") or request.POST.get("id_emergencia")
+    nuevo_estado = (payload.get("estado") or request.POST.get("estado") or "").strip().lower()
+
+    try:
+        emergencia_id = int(emergencia_id)
+    except Exception:
+        return JsonResponse({"ok": False, "error": "id_emergencia inválido."}, status=400)
+
+    if nuevo_estado not in ("vista", "atendida", "cerrada"):
+        return JsonResponse({"ok": False, "error": "Estado inválido."}, status=400)
+
+    cuidador_id = mysql_user["id"]
+    with connection.cursor() as cursor:
+        if nuevo_estado in ("atendida", "cerrada"):
+            cursor.execute(
+                "UPDATE emergencia SET estado=%s, atendido_en=NOW() "
+                "WHERE id_emergencia=%s AND cuidador_id=%s",
+                [nuevo_estado, emergencia_id, cuidador_id],
+            )
+        else:
+            cursor.execute(
+                "UPDATE emergencia SET estado=%s "
+                "WHERE id_emergencia=%s AND cuidador_id=%s",
+                [nuevo_estado, emergencia_id, cuidador_id],
+            )
+        updated = int(cursor.rowcount or 0)
+    connection.commit()
+
+    if updated <= 0:
+        return JsonResponse({"ok": False, "error": "Emergencia no encontrada."}, status=404)
+
+    return JsonResponse({"ok": True, "id_emergencia": emergencia_id, "estado": nuevo_estado})
 
 #---------UBICACION---------#
 def _mysql_get_compartir_ubicacion(usuario_id: int) -> bool:
