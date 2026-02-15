@@ -33,11 +33,11 @@ from django.views.decorators.csrf import csrf_exempt
 from .models import PushSubscription
 import secrets
 import string
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_GET
 from django.http import JsonResponse
-from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 import math
+
 try:
     from pywebpush import webpush, WebPushException
 except Exception:
@@ -2726,6 +2726,168 @@ def cuidador_historial_ubicacion(request):
         "compartir_ubicacion": True,
         "puntos": puntos
     })
+
+
+def _chat_resolver_contexto(request):
+    """
+    Retorna (adulto_id, cuidador_id, emisor_id, tipo_usuario) basándose en tu vínculo activo.
+    Usa tu tabla Usuarios + adulto_cuidador.
+    """
+    ident = (request.user.username or "").strip()
+    mysql_user = verificar_usuario_en_bd(ident)  # tú ya la tienes
+    if not mysql_user:
+        nombre = (request.user.first_name or "").strip()
+        mysql_user = verificar_usuario_en_bd(nombre)
+
+    if not mysql_user:
+        return None, None, None, "No pude resolver tu usuario MySQL."
+
+    emisor_id = int(mysql_user["id"])
+    tipo = mysql_user.get("tipo")
+
+    if tipo == "adulto":
+        adulto_id = emisor_id
+        cuidador = _mysql_get_cuidador_activo_por_adulto(adulto_id)  # tú ya la tienes
+        if not cuidador:
+            return None, None, None, "No hay cuidador vinculado activo."
+        cuidador_id = int(cuidador["id"])
+        return adulto_id, cuidador_id, emisor_id, None
+
+    if tipo == "cuidador":
+        cuidador_id = emisor_id
+        adulto = _mysql_get_vinculo_activo_cuidador(cuidador_id)  # tú ya la tienes
+        if not adulto:
+            return None, None, None, "No hay adulto vinculado activo."
+        adulto_id = int(adulto["id"])
+        return adulto_id, cuidador_id, emisor_id, None
+
+    return None, None, None, "Tipo de usuario inválido para chat."
+
+@login_required
+@require_GET
+def chat_get_mensajes(request):
+    adulto_id, cuidador_id, emisor_id, err = _chat_resolver_contexto(request)
+    if err:
+        return JsonResponse({"ok": False, "error": err}, status=403)
+
+    after_id = request.GET.get("after_id") or "0"
+    limit = request.GET.get("limit") or "50"
+    try:
+        after_id = int(after_id)
+    except Exception:
+        after_id = 0
+    try:
+        limit = int(limit)
+        limit = max(1, min(limit, 200))
+    except Exception:
+        limit = 50
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT id, mensaje, creado_en, emisor_id, escuchado, tipo
+            FROM chat_voz
+            WHERE adulto_id=%s AND cuidador_id=%s AND id > %s
+            ORDER BY id ASC
+            LIMIT %s
+        """, [adulto_id, cuidador_id, after_id, limit])
+        rows = cursor.fetchall()
+
+    mensajes = []
+    last_id = after_id
+    for r in rows:
+        mid = int(r[0])
+        last_id = max(last_id, mid)
+        mensajes.append({
+            "id": mid,
+            "mensaje": r[1] or "",
+            "creado_en": r[2].isoformat() if r[2] else None,
+            "emisor_id": int(r[3]),
+            "escuchado": bool(r[4]),
+            "tipo": r[5] or "texto",
+        })
+
+    return JsonResponse({
+        "ok": True,
+        "adulto_id": adulto_id,
+        "cuidador_id": cuidador_id,
+        "emisor_id": emisor_id,
+        "mensajes": mensajes,
+        "last_id": last_id,
+    })
+
+@login_required
+@require_POST
+def chat_post_enviar(request):
+    adulto_id, cuidador_id, emisor_id, err = _chat_resolver_contexto(request)
+    if err:
+        return JsonResponse({"ok": False, "error": err}, status=403)
+
+    # soporta form o JSON
+    texto = (request.POST.get("mensaje") or "").strip()
+    if not texto:
+        try:
+            body = json.loads((request.body or b"{}").decode("utf-8"))
+            texto = (body.get("mensaje") or "").strip()
+        except Exception:
+            texto = ""
+
+    if not texto:
+        return JsonResponse({"ok": False, "error": "Mensaje vacío."}, status=400)
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO chat_voz (mensaje, tipo, escuchado, adulto_id, cuidador_id, emisor_id)
+            VALUES (%s, 'texto', 0, %s, %s, %s)
+        """, [texto, adulto_id, cuidador_id, emisor_id])
+        new_id = int(cursor.lastrowid)
+
+        cursor.execute("SELECT creado_en FROM chat_voz WHERE id=%s LIMIT 1", [new_id])
+        row = cursor.fetchone()
+
+    connection.commit()
+
+    return JsonResponse({
+        "ok": True,
+        "id": new_id,
+        "creado_en": row[0].isoformat() if row and row[0] else None,
+    })
+
+@login_required
+@require_POST
+def chat_post_marcar_visto(request):
+    adulto_id, cuidador_id, emisor_id, err = _chat_resolver_contexto(request)
+    if err:
+        return JsonResponse({"ok": False, "error": err}, status=403)
+
+    up_to_id = None
+    try:
+        up_to_id = request.POST.get("up_to_id")
+        if up_to_id is None:
+            body = json.loads((request.body or b"{}").decode("utf-8"))
+            up_to_id = body.get("up_to_id")
+        up_to_id = int(up_to_id) if up_to_id is not None else None
+    except Exception:
+        up_to_id = None
+
+    params = [adulto_id, cuidador_id, emisor_id]
+    extra = ""
+    if up_to_id is not None:
+        extra = " AND id <= %s "
+        params.append(up_to_id)
+
+    with connection.cursor() as cursor:
+        cursor.execute(f"""
+            UPDATE chat_voz
+            SET escuchado=1
+            WHERE adulto_id=%s AND cuidador_id=%s
+              AND emisor_id <> %s
+              AND escuchado=0
+              {extra}
+        """, params)
+        updated = int(cursor.rowcount or 0)
+
+    connection.commit()
+    return JsonResponse({"ok": True, "updated": updated})
 
 #-----flutter------#
 from django.views.decorators.csrf import csrf_exempt

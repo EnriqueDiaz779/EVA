@@ -559,7 +559,57 @@
   </div>
 </div>
 
+<!-- ===== CHAT (CUIDADOR) ===== -->
+<button id="btnChat"
+  class="fixed bottom-10 right-5 z-[80] w-20 h-20 rounded-full bg-blue-900 hover:bg-blue-950 text-white text-4xl font-extrabold shadow-2xl border-4 border-white active:scale-95"
+  type="button" title="Chat">💬</button>
 
+<div id="chatPanel"
+  class="hidden fixed inset-0 z-[99999] bg-black/60 backdrop-blur-sm">
+  <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl border-t-4 border-blue-900
+              max-h-[85vh] flex flex-col">
+
+    <div class="flex items-center justify-between px-5 py-4 border-b">
+      <p class="text-2xl font-extrabold">Chat con el adulto</p>
+      <button id="btnCerrarChat" class="text-4xl font-extrabold text-gray-500 hover:text-black">&times;</button>
+    </div>
+
+    <div id="chatMensajes"
+      class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50"></div>
+
+    <div class="p-4 border-t bg-white">
+      <div class="flex items-center gap-3">
+        <button id="btnMicChat"
+          class="w-14 h-14 rounded-2xl bg-yellow-400 hover:bg-yellow-500 text-3xl font-extrabold shadow active:scale-95"
+          type="button">🎤</button>
+
+        <input id="chatInput"
+          class="flex-1 rounded-2xl border-2 border-gray-300 px-4 py-3 text-xl outline-none focus:ring-2 focus:ring-blue-300"
+          placeholder="Escribe tu mensaje..." />
+
+        <button id="btnEnviarChat"
+          class="px-6 py-3 rounded-2xl bg-blue-900 hover:bg-blue-950 text-white text-xl font-extrabold shadow active:scale-95"
+          type="button">Enviar</button>
+      </div>
+
+      <p id="chatHint" class="mt-2 text-sm font-semibold text-gray-500"></p>
+    </div>
+  </div>
+</div>
+
+<div id="modalVozChat"
+  class="hidden fixed inset-0 z-[100000] bg-black/70 backdrop-blur-sm items-center justify-center">
+  <div class="bg-white rounded-3xl shadow-2xl w-[92%] max-w-2xl p-6 text-center border-4 border-yellow-400">
+    <p class="text-3xl font-extrabold">¿Enviar este mensaje?</p>
+    <p id="vozTextoPreview" class="mt-4 text-2xl font-semibold text-gray-800 bg-gray-50 rounded-2xl p-4 border"></p>
+
+    <div class="mt-6 flex gap-4 justify-center">
+      <button id="btnRepetirVoz" class="px-8 py-4 rounded-2xl bg-blue-500 hover:bg-blue-600 text-white text-2xl font-extrabold shadow">🔁 Repetir</button>
+      <button id="btnConfirmarVoz" class="px-8 py-4 rounded-2xl bg-green-600 hover:bg-green-700 text-white text-2xl font-extrabold shadow">✅ Enviar</button>
+      <button id="btnCancelarVoz" class="px-8 py-4 rounded-2xl bg-red-600 hover:bg-red-700 text-white text-2xl font-extrabold shadow">✖ Cancelar</button>
+    </div>
+  </div>
+</div>
 
 <script>
   // ===== Referencias UI (header + perfil + bloqueo) =====
@@ -1706,6 +1756,408 @@ function cerrarMenuAgregar() {
   registrarPushCuidador();
   revisarEmergencias();
   setInterval(revisarEmergencias, 6000);
+})();
+</script>
+
+<script>
+(() => {
+  // ===== ENDPOINTS =====
+  const URL_GET  = "/chat/mensajes";
+  const URL_SEND = "/chat/enviar";
+  const URL_SEEN = "/chat/visto";
+
+  const POLL_MS = 1500;
+
+  // ===== ELEMENTS (IDs ya existen en tus 2 paneles) =====
+  const btnChat   = document.getElementById("btnChat");
+  const panel     = document.getElementById("chatPanel");
+  const btnCerrar = document.getElementById("btnCerrarChat");
+
+  const box   = document.getElementById("chatMensajes");
+  const input = document.getElementById("chatInput");
+  const btnSend = document.getElementById("btnEnviarChat");
+  const hint  = document.getElementById("chatHint");
+
+  // Voz (solo dictado -> texto, con modal confirmar)
+  const btnMic = document.getElementById("btnMicChat");
+  const modalVoz = document.getElementById("modalVozChat");
+  const vozPreview = document.getElementById("vozTextoPreview");
+  const btnRepetir = document.getElementById("btnRepetirVoz");
+  const btnConfirmar = document.getElementById("btnConfirmarVoz");
+  const btnCancelar = document.getElementById("btnCancelarVoz");
+
+  if (!btnChat || !panel || !btnCerrar || !box || !input || !btnSend) return;
+
+  // ===== STATE =====
+  let pollTimer = null;
+  let isOpen = false;
+
+  // Estos los devuelve el server en GET /chat/mensajes
+  let adultoId = null;
+  let cuidadorId = null;
+  let emisorId = null;
+
+  // ===== CSRF =====
+  function getCookie(name) {
+    const m = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
+    return m ? decodeURIComponent(m[2]) : null;
+  }
+  const CSRF = getCookie("csrftoken");
+
+  // ===== STORAGE: chat_last_<adultoId>_<cuidadorId> =====
+  function storageKey() {
+    if (!adultoId || !cuidadorId) return null;
+    return `chat_last_${adultoId}_${cuidadorId}`;
+  }
+  function getLastId() {
+    const k = storageKey();
+    if (!k) return 0;
+    const n = parseInt(localStorage.getItem(k) || "0", 10);
+    return isNaN(n) ? 0 : n;
+  }
+  function setLastId(id) {
+    const k = storageKey();
+    if (!k) return;
+    localStorage.setItem(k, String(id || 0));
+  }
+
+  // ===== UI HELPERS =====
+  function escapeHtml(s) {
+    return (s || "").replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[c]));
+  }
+
+  function scrollToBottom() {
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function setHint(text) {
+    if (!hint) return;
+    hint.textContent = text || "";
+  }
+
+  // Mensaje: burbuja + checks (solo para propio)
+  function renderMessage(m) {
+    const own = (m.emisor_id === emisorId);
+
+    const wrap = document.createElement("div");
+    wrap.dataset.id = String(m.id);
+    wrap.dataset.own = own ? "1" : "0";
+    wrap.className = `w-full flex ${own ? "justify-end" : "justify-start"}`;
+
+    const bubble = document.createElement("div");
+    bubble.className =
+      `max-w-[85%] rounded-2xl px-4 py-3 shadow border text-xl font-semibold ` +
+      (own
+        ? "bg-blue-900 text-white border-blue-900"
+        : "bg-white text-gray-900 border-gray-200");
+
+    const msgText = document.createElement("div");
+    msgText.className = "whitespace-pre-wrap break-words";
+    msgText.innerHTML = escapeHtml(m.mensaje);
+
+    const meta = document.createElement("div");
+    meta.className = `mt-1 text-sm font-extrabold ${own ? "text-blue-100" : "text-gray-400"} flex justify-end gap-2`;
+
+    if (own) {
+      // ✓ enviado (si está en listado ya está guardado)
+      // ✓✓ visto cuando escuchado=true
+      meta.textContent = m.escuchado ? "✓✓" : "✓";
+    } else {
+      meta.textContent = ""; // sin checks para el otro
+    }
+
+    bubble.appendChild(msgText);
+    bubble.appendChild(meta);
+    wrap.appendChild(bubble);
+    return wrap;
+  }
+
+  function upsertMessage(m) {
+    const existing = box.querySelector(`[data-id="${m.id}"]`);
+    if (!existing) {
+      box.appendChild(renderMessage(m));
+      return;
+    }
+    // si ya existe, solo actualizar ✓✓ si aplica
+    const isOwn = existing.dataset.own === "1";
+    if (isOwn && m.escuchado) {
+      const meta = existing.querySelector("div.mt-1");
+      if (meta) meta.textContent = "✓✓";
+    }
+  }
+
+  // ===== NETWORK =====
+  async function apiGetMensajes(afterId) {
+    const url = `${URL_GET}?after_id=${encodeURIComponent(afterId || 0)}&limit=120`;
+    const r = await fetch(url, { method: "GET", credentials: "same-origin" });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || "Error get mensajes");
+    return data;
+  }
+
+  async function apiSendMensaje(texto) {
+    const fd = new FormData();
+    fd.append("mensaje", texto);
+
+    const r = await fetch(URL_SEND, {
+      method: "POST",
+      body: fd,
+      credentials: "same-origin",
+      headers: CSRF ? { "X-CSRFToken": CSRF } : {}
+    });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || "Error enviar");
+    return data;
+  }
+
+  async function apiMarkSeen(upToId) {
+    const payload = upToId ? { up_to_id: upToId } : {};
+    const r = await fetch(URL_SEEN, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        ...(CSRF ? { "X-CSRFToken": CSRF } : {})
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || "Error visto");
+    return data;
+  }
+
+  // ===== POLLING =====
+  function canPoll() {
+    return isOpen && !document.hidden;
+  }
+
+  async function pollOnce() {
+    if (!canPoll()) return;
+
+    const lastId = getLastId();
+    const data = await apiGetMensajes(lastId);
+
+    // set contexto conversación (solo 1a vez normalmente)
+    adultoId = data.adulto_id;
+    cuidadorId = data.cuidador_id;
+    emisorId = data.emisor_id;
+
+    const msgs = data.mensajes || [];
+    let maxId = lastId;
+
+    for (const m of msgs) {
+      upsertMessage(m);
+      if (m.id > maxId) maxId = m.id;
+    }
+
+    if (maxId > lastId) {
+      setLastId(maxId);
+      scrollToBottom();
+    }
+
+    // Si llegaron mensajes (cualquiera) y el chat está abierto:
+    // marcar visto (mensajes del otro) hasta el último id recibido
+    if (msgs.length) {
+      const upTo = msgs[msgs.length - 1].id;
+      try { await apiMarkSeen(upTo); } catch (e) {}
+    }
+  }
+
+  function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(() => {
+      pollOnce().catch(() => {});
+    }, POLL_MS);
+  }
+
+  function stopPolling() {
+    if (!pollTimer) return;
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+
+  // ===== OPEN / CLOSE =====
+  async function openChat() {
+    if (isOpen) return;
+    isOpen = true;
+
+    panel.classList.remove("hidden");
+    setHint("Conectando…");
+
+    // Primer poll para obtener adultoId/cuidadorId/emisorId y pintar
+    try {
+      await pollOnce();
+      setHint("Listo ✅");
+    } catch (e) {
+      setHint("No pude cargar el chat.");
+    }
+
+    // Al abrir: marcar visto (por si había mensajes pendientes antes de abrir)
+    try { await apiMarkSeen(getLastId()); } catch (e) {}
+
+    startPolling();
+    setTimeout(scrollToBottom, 0);
+  }
+
+  function closeChat() {
+    if (!isOpen) return;
+    isOpen = false;
+    stopPolling();
+    panel.classList.add("hidden");
+    setHint("");
+    // cerrar modales de voz si estaban abiertos
+    hideVozModal();
+  }
+
+  // ===== VOZ: dictar -> modal enviar/repetir =====
+  let recognition = null;
+  let lastVoiceText = "";
+
+  function supportsSpeechRecognition() {
+    return ("webkitSpeechRecognition" in window) || ("SpeechRecognition" in window);
+  }
+
+  function initRecognition() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return null;
+
+    const r = new SR();
+    r.lang = "es-MX";
+    r.interimResults = false;
+    r.maxAlternatives = 1;
+    return r;
+  }
+
+  function showVozModal(texto) {
+    if (!modalVoz) return;
+    lastVoiceText = texto || "";
+    vozPreview.textContent = lastVoiceText || "(vacío)";
+    modalVoz.classList.remove("hidden");
+    modalVoz.classList.add("flex");
+  }
+
+  function hideVozModal() {
+    if (!modalVoz) return;
+    modalVoz.classList.add("hidden");
+    modalVoz.classList.remove("flex");
+  }
+
+  function startDictation() {
+    if (!supportsSpeechRecognition()) {
+      setHint("Tu navegador no soporta dictado por voz.");
+      return;
+    }
+
+    if (!recognition) recognition = initRecognition();
+    if (!recognition) {
+      setHint("No pude iniciar dictado.");
+      return;
+    }
+
+    setHint("Escuchando… 🎤");
+
+    recognition.onresult = (ev) => {
+      const text = ev.results?.[0]?.[0]?.transcript || "";
+      const limpio = (text || "").trim();
+      if (!limpio) {
+        setHint("No se escuchó nada. Intenta de nuevo.");
+        return;
+      }
+      setHint("Revisa y confirma ✅");
+      showVozModal(limpio);
+    };
+
+    recognition.onerror = () => {
+      setHint("Error de micrófono/dictado. Reintenta.");
+    };
+
+    recognition.onend = () => {
+      // si terminó sin resultados, el hint se queda
+    };
+
+    try { recognition.start(); } catch (e) {}
+  }
+
+  // ===== EVENTS =====
+  btnChat.addEventListener("click", openChat);
+  btnCerrar.addEventListener("click", closeChat);
+
+  // click fuera del panel (oscuro) cierra
+  panel.addEventListener("click", (e) => {
+    if (e.target === panel) closeChat();
+  });
+
+  btnSend.addEventListener("click", async () => {
+    const texto = (input.value || "").trim();
+    if (!texto) return;
+
+    input.value = "";
+    setHint("Enviando…");
+
+    try {
+      await apiSendMensaje(texto);
+      await pollOnce(); // fuerza render inmediato
+      setHint("Enviado ✓");
+      setTimeout(() => setHint(""), 1200);
+    } catch (e) {
+      setHint("No se pudo enviar.");
+    }
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      btnSend.click();
+    }
+  });
+
+  // mic
+  if (btnMic) btnMic.addEventListener("click", () => {
+    // si el chat no está abierto, ábrelo primero
+    if (!isOpen) openChat();
+    startDictation();
+  });
+
+  // modal voz botones
+  if (btnCancelar) btnCancelar.addEventListener("click", () => {
+    hideVozModal();
+    setHint("");
+  });
+
+  if (btnRepetir) btnRepetir.addEventListener("click", () => {
+    hideVozModal();
+    startDictation();
+  });
+
+  if (btnConfirmar) btnConfirmar.addEventListener("click", async () => {
+    const texto = (lastVoiceText || "").trim();
+    if (!texto) {
+      setHint("Texto vacío.");
+      hideVozModal();
+      return;
+    }
+
+    hideVozModal();
+    setHint("Enviando…");
+
+    try {
+      await apiSendMensaje(texto);
+      await pollOnce();
+      setHint("Enviado ✓");
+      setTimeout(() => setHint(""), 1200);
+    } catch (e) {
+      setHint("No se pudo enviar.");
+    }
+  });
+
+  // pausar polling en segundo plano
+  document.addEventListener("visibilitychange", () => {
+    if (!canPoll()) stopPolling();
+    else startPolling();
+  });
+
 })();
 </script>
 

@@ -23,7 +23,10 @@ urlpatterns = [
     path("ubicacion/ping/", views.ubicacion_ping, name="ubicacion_ping"),
     path("cuidador/ubicacion/ultima/", views.cuidador_ultima_ubicacion, name="cuidador_ultima_ubicacion"),
     path("cuidador/ubicacion/historial/", views.cuidador_historial_ubicacion, name="cuidador_historial_ubicacion"),
-
+    
+    path("chat/mensajes", views.chat_get_mensajes, name="chat_get_mensajes"),
+    path("chat/enviar", views.chat_post_enviar, name="chat_post_enviar"),
+    path("chat/visto", views.chat_post_marcar_visto, name="chat_post_marcar_visto"),
 
     #--------flutter-----------#
     path("api/v1/auth/register/cuidador/", views.api_v1_register_cuidador),
