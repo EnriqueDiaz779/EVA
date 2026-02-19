@@ -29,32 +29,40 @@ self.addEventListener("fetch", (event) => {
 });
 
 function buildNotification(payload = {}) {
-  const kind = (payload.kind || payload.type || "alarma").toString().toLowerCase();
+  const rawKind = (payload.kind || payload.type || "alarma").toString().toLowerCase();
+  const kind = rawKind === "show_notification" ? "alarma" : rawKind;
+  const isAlarm = kind === "alarma";
   const isEmergency = kind === "emergencia";
-  const title = payload.title || (isEmergency ? "SOS EVA" : "EVA");
+  const isChat = kind === "chat";
+  const isLocation = kind === "ubicacion";
+  const title = payload.title || (isEmergency ? "SOS EVA" : (isChat ? "Chat EVA" : (isLocation ? "Ubicacion EVA" : "EVA")));
 
   const baseOptions = {
     body: payload.body || "Tienes un aviso.",
     icon: "/static/miapp/icons/icon-192.png",
     badge: "/static/miapp/icons/icon-192.png",
-    tag: payload.tag || (isEmergency ? "eva-emergencia" : "eva-alert"),
+    tag: payload.tag || (isEmergency ? "eva-emergencia" : (isChat ? "eva-chat" : (isLocation ? "eva-ubicacion" : "eva-alert"))),
     requireInteraction: true,
     data: {
-      url: payload.url || (isEmergency ? "/interfaz-cuidador/" : "/"),
+      url: payload.url || (isEmergency ? "/interfaz-cuidador/" : (isChat ? "/inicio/" : "/")),
       id: payload.id || null,
       kind,
       id_emergencia: payload.id_emergencia || null,
     },
-    vibrate: isEmergency ? [300, 120, 300, 120, 300] : [200, 100, 200],
+    vibrate: isEmergency ? [300, 120, 300, 120, 300] : (isChat ? [120, 60, 120] : (isLocation ? [180, 80, 180] : [200, 100, 200])),
   };
 
-  if (!isEmergency) {
+  if (isAlarm) {
     baseOptions.actions = [
       { action: "tomada", title: "Tomada", icon: "/static/miapp/icons/check.png" },
       { action: "omitir", title: "Omitir 5 min", icon: "/static/miapp/icons/repetir.png" },
     ];
-  } else {
+  } else if (isEmergency) {
     baseOptions.actions = [{ action: "ver", title: "Ver emergencia" }];
+  } else if (isChat) {
+    baseOptions.actions = [{ action: "abrir_chat", title: "Abrir chat" }];
+  } else if (isLocation) {
+    baseOptions.actions = [{ action: "ver_mapa", title: "Ver mapa" }];
   }
 
   return { title, options: baseOptions };

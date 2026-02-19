@@ -438,7 +438,8 @@
     class="w-28 h-28 rounded-full bg-yellow-400 hover:bg-yellow-500 
            text-6xl font-extrabold shadow-2xl 
            active:scale-95 transition-all duration-200
-           flex items-center justify-center">
+           flex items-center justify-center"
+    type="button">
     🎤
   </button>
 
@@ -1170,19 +1171,6 @@ async function eliminarTodasAlarmas() {
 </script>
 
 <script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/service-worker.js').then(reg => {
-    console.log("🧩 EVA Service Worker listo:", reg);
-
-    // 🧠 Guardar IDs de alarmas ya notificadas (para no repetir)
-    const mostradas = new Set();
-
-
-  });
-}
-</script>
-
-<script>
 // Canal de comunicación entre Django y SW
 if ('BroadcastChannel' in window) {
   const ch = new BroadcastChannel('eva_notif');
@@ -1255,10 +1243,6 @@ function urlBase64ToUint8Array(base64String) {
 
 <script>
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/service-worker.js")
-    .then(reg => console.log("✅ SW registrado:", reg.scope))
-    .catch(err => console.error("❌ SW error:", err));
-
   // 🟡 Reproducir sonido desde el SW
   navigator.serviceWorker.addEventListener("message", event => {
     if (event.data?.action === "play_sound") {
@@ -1569,6 +1553,26 @@ if ("serviceWorker" in navigator) {
     return resp.json();
   }
 
+  async function cargarEstadoInicialUbicacion() {
+    try {
+      const resp = await fetch("/ubicacion/estado/", { method: "GET" });
+      const data = await resp.json();
+      if (!data?.ok) return;
+
+      activo = !!data.compartir_ubicacion;
+      renderUI();
+
+      // Si ya estaba activa antes de recargar, reanuda el envío continuo.
+      if (activo) {
+        startWatch();
+      } else {
+        stopWatch();
+      }
+    } catch (_) {
+      // Si falla estado inicial, dejamos la UI actual y esperamos interacción del usuario.
+    }
+  }
+
   function startWatch() {
     if (!("geolocation" in navigator)) {
       showBanner("Tu dispositivo no soporta ubicación.", "err");
@@ -1698,6 +1702,7 @@ if ("serviceWorker" in navigator) {
 });
   // UI inicial
   renderUI();
+  cargarEstadoInicialUbicacion();
 })();
 </script>
 
@@ -1821,11 +1826,14 @@ if ("serviceWorker" in navigator) {
   // ===== STATE =====
   let pollTimer = null;
   let isOpen = false;
+  let historialCargado = false;
 
   // Estos los devuelve el server en GET /chat/mensajes
   let adultoId = null;
   let cuidadorId = null;
   let emisorId = null;
+  let unreadCount = 0;
+  let lastNotifiedIncomingId = 0;
 
   // ===== CSRF =====
   function getCookie(name) {
@@ -1849,6 +1857,61 @@ if ("serviceWorker" in navigator) {
     const k = storageKey();
     if (!k) return;
     localStorage.setItem(k, String(id || 0));
+  }
+
+  function ensureChatBadge() {
+    if (!btnChat) return null;
+    if (getComputedStyle(btnChat).position === "static") {
+      btnChat.style.position = "relative";
+    }
+    let badge = btnChat.querySelector("[data-chat-badge='1']");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.setAttribute("data-chat-badge", "1");
+      badge.className = "hidden absolute -top-1 -right-1 min-w-[1.35rem] h-6 px-1 rounded-full bg-red-600 text-white text-xs font-extrabold flex items-center justify-center";
+      btnChat.appendChild(badge);
+    }
+    return badge;
+  }
+
+  function updateChatBadge() {
+    const badge = ensureChatBadge();
+    if (!badge) return;
+    if (unreadCount <= 0) {
+      badge.classList.add("hidden");
+      badge.textContent = "";
+      return;
+    }
+    badge.classList.remove("hidden");
+    badge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
+  }
+
+  async function notifyIncomingChat(mensaje) {
+    try {
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
+      const body = (mensaje || "Tienes un nuevo mensaje.").toString().trim() || "Tienes un nuevo mensaje.";
+      const payload = {
+        type: "SHOW_NOTIFICATION",
+        kind: "chat",
+        title: "Nuevo mensaje",
+        body,
+        tag: `chat-${adultoId || "a"}-${cuidadorId || "c"}`,
+        url: "/inicio/"
+      };
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) return;
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage(payload);
+      } else {
+        await reg.showNotification(payload.title, {
+          body: payload.body,
+          icon: "/static/miapp/icons/icon-192.png",
+          badge: "/static/miapp/icons/icon-192.png",
+          tag: payload.tag,
+          data: { url: payload.url, kind: "chat" }
+        });
+      }
+    } catch (_) {}
   }
 
   // ===== UI HELPERS =====
@@ -1966,8 +2029,10 @@ if ("serviceWorker" in navigator) {
   async function pollOnce() {
     if (!canPoll()) return;
 
+    const cargarHistorial = !historialCargado || box.children.length === 0;
     const lastId = getLastId();
-    const data = await apiGetMensajes(lastId);
+    const afterId = cargarHistorial ? 0 : lastId;
+    const data = await apiGetMensajes(afterId);
 
     // set contexto conversación (solo 1a vez normalmente)
     adultoId = data.adulto_id;
@@ -1993,6 +2058,8 @@ if ("serviceWorker" in navigator) {
       const upTo = msgs[msgs.length - 1].id;
       try { await apiMarkSeen(upTo); } catch (e) {}
     }
+
+    if (cargarHistorial) historialCargado = true;
   }
 
   function startPolling() {
@@ -2008,6 +2075,39 @@ if ("serviceWorker" in navigator) {
     pollTimer = null;
   }
 
+  async function pollBadgeOnce() {
+    if (isOpen || document.hidden) return;
+    const lastId = getLastId();
+    const data = await apiGetMensajes(lastId);
+
+    adultoId = data.adulto_id;
+    cuidadorId = data.cuidador_id;
+    emisorId = data.emisor_id;
+
+    const msgs = data.mensajes || [];
+    let maxId = lastId;
+    let nuevosEntrantes = 0;
+    let ultimoEntrante = null;
+
+    for (const m of msgs) {
+      if (m.id > maxId) maxId = m.id;
+      if (m.emisor_id !== emisorId) {
+        nuevosEntrantes += 1;
+        ultimoEntrante = m;
+      }
+    }
+
+    if (nuevosEntrantes > 0) {
+      unreadCount += nuevosEntrantes;
+      updateChatBadge();
+      if (ultimoEntrante && Number(ultimoEntrante.id) > Number(lastNotifiedIncomingId || 0)) {
+        lastNotifiedIncomingId = Number(ultimoEntrante.id);
+        notifyIncomingChat(ultimoEntrante.mensaje);
+      }
+    }
+    if (maxId > lastId) setLastId(maxId);
+  }
+
   // ===== OPEN / CLOSE =====
   async function openChat() {
     if (isOpen) return;
@@ -2015,6 +2115,8 @@ if ("serviceWorker" in navigator) {
 
     panel.classList.remove("hidden");
     setHint("Conectando…");
+    unreadCount = 0;
+    updateChatBadge();
 
     // Primer poll para obtener adultoId/cuidadorId/emisorId y pintar
     try {
@@ -2060,6 +2162,17 @@ if ("serviceWorker" in navigator) {
     return r;
   }
 
+  async function ensureMicPermission() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return true;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(t => t.stop());
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function showVozModal(texto) {
     if (!modalVoz) return;
     lastVoiceText = texto || "";
@@ -2074,9 +2187,15 @@ if ("serviceWorker" in navigator) {
     modalVoz.classList.remove("flex");
   }
 
-  function startDictation() {
+  async function startDictation() {
     if (!supportsSpeechRecognition()) {
       setHint("Tu navegador no soporta dictado por voz.");
+      return;
+    }
+
+    const micOk = await ensureMicPermission();
+    if (!micOk) {
+      setHint("No tengo permiso de microfono. Habilitalo en el candado del navegador.");
       return;
     }
 
@@ -2099,15 +2218,28 @@ if ("serviceWorker" in navigator) {
       showVozModal(limpio);
     };
 
-    recognition.onerror = () => {
-      setHint("Error de micrófono/dictado. Reintenta.");
+    recognition.onerror = (ev) => {
+      const code = (ev && ev.error) ? String(ev.error) : "";
+      if (code === "not-allowed" || code === "service-not-allowed") {
+        setHint("Permiso de microfono bloqueado.");
+      } else if (code === "no-speech") {
+        setHint("No detecte voz. Intenta de nuevo.");
+      } else {
+        setHint("Error de microfono/dictado. Reintenta.");
+      }
+      recognition = null;
     };
 
     recognition.onend = () => {
       // si terminó sin resultados, el hint se queda
     };
 
-    try { recognition.start(); } catch (e) {}
+    try {
+      recognition.start();
+    } catch (_) {
+      recognition = null;
+      setHint("No pude activar el microfono. Intenta otra vez.");
+    }
   }
 
   // ===== EVENTS =====
@@ -2120,10 +2252,10 @@ if ("serviceWorker" in navigator) {
   });
 
   // mic
-  if (btnMic) btnMic.addEventListener("click", () => {
+  if (btnMic) btnMic.addEventListener("click", async () => {
     // si el chat no está abierto, ábrelo primero
-    if (!isOpen) openChat();
-    startDictation();
+    if (!isOpen) await openChat();
+    await startDictation();
   });
 
   // modal voz botones
@@ -2132,9 +2264,9 @@ if ("serviceWorker" in navigator) {
     setHint("");
   });
 
-  if (btnRepetir) btnRepetir.addEventListener("click", () => {
+  if (btnRepetir) btnRepetir.addEventListener("click", async () => {
     hideVozModal();
-    startDictation();
+    await startDictation();
   });
 
   if (btnConfirmar) btnConfirmar.addEventListener("click", async () => {
@@ -2162,7 +2294,14 @@ if ("serviceWorker" in navigator) {
   document.addEventListener("visibilitychange", () => {
     if (!canPoll()) stopPolling();
     else startPolling();
+    if (!document.hidden) pollBadgeOnce().catch(() => {});
   });
+
+  setInterval(() => {
+    pollBadgeOnce().catch(() => {});
+  }, POLL_MS);
+
+  updateChatBadge();
 
 })();
 </script>

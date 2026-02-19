@@ -22,6 +22,7 @@ from PIL import Image
 import io
 import base64, json, os
 import re
+import unicodedata
 from django.conf import settings
 from openai import OpenAI
 from django.views.decorators.csrf import csrf_exempt
@@ -967,16 +968,25 @@ def _mysql_set_vinculo_activo(cuidador_id: int, adulto_id: int, codigo: str):
 
 def _django_user_from_mysql_usuario(nombre: str, correo: str):
     """Mapea un usuario MySQL a un User de Django por correo o nombre."""
-    if correo:
-        u = User.objects.filter(username=correo.lower()).first()
+    correo_norm = (correo or "").strip().lower()
+    nombre_norm = (nombre or "").strip()
+
+    if correo_norm:
+        u = (
+            User.objects
+            .filter(Q(username__iexact=correo_norm) | Q(email__iexact=correo_norm))
+            .first()
+        )
         if u:
             return u
 
-    if nombre:
-        u = User.objects.filter(first_name=nombre).first()
+    if nombre_norm:
+        u = User.objects.filter(first_name__iexact=nombre_norm).first()
         if u:
             return u
-        return User.objects.filter(username=(nombre or "").strip().lower()).first()
+        u = User.objects.filter(username__iexact=nombre_norm).first()
+        if u:
+            return u
 
     return None
 
@@ -1515,32 +1525,59 @@ def registrar_orden_openai(request):
 @login_required
 def pendientes(request):
     """
-    Detecta alarmas que deben sonar ahora (+/-30 s),
+    Detecta alarmas que deben sonar ahora (ventana tolerante),
     marca su disparo y envía notificación Web Push si hay suscripciones.
     """
     ahora = timezone.localtime()
-    margen = timedelta(seconds=30)
 
-    inicio = (ahora - margen).time()
-    fin = (ahora + margen).time()
+    def _norm_dia(token):
+        txt = unicodedata.normalize("NFKD", str(token or ""))
+        txt = txt.encode("ascii", "ignore").decode("ascii").lower().strip()
+        txt = re.sub(r"[^a-z]", "", txt)
+        return txt[:3]
 
+    def _aplica_hoy(alarma):
+        if alarma.fecha and alarma.fecha != ahora.date():
+            return False
+        raw = (alarma.dias or "").strip()
+        if not raw:
+            return True
+
+        hoy_tokens = {
+            0: {"lun", "mon"},
+            1: {"mar", "tue"},
+            2: {"mie", "wed"},
+            3: {"jue", "thu"},
+            4: {"vie", "fri"},
+            5: {"sab", "sat"},
+            6: {"dom", "sun"},
+        }[ahora.weekday()]
+        dias = {_norm_dia(x) for x in re.split(r"[,;/\s]+", raw) if _norm_dia(x)}
+        return bool(dias & hoy_tokens)
+
+    # Tomamos alarmas candidatas del día y validamos por diferencia real en segundos.
     alarmas = (
         Alarma.objects
-        .filter(
-            usuario=request.user,
-            activa=True,
-            entregada=False,
-            hora__gte=inicio,
-            hora__lte=fin,
-        )
+        .filter(usuario=request.user, activa=True)
         .filter(Q(fecha__isnull=True) | Q(fecha=ahora.date()))
         .order_by("hora")
     )
 
     data = []
     for a in alarmas:
+        if not _aplica_hoy(a):
+            continue
+
         # evita disparos duplicados recientes
         if a.disparada_at and (ahora - a.disparada_at).total_seconds() < 90:
+            continue
+
+        base_dt = timezone.make_aware(
+            datetime.combine(ahora.date(), a.hora),
+            timezone.get_current_timezone(),
+        )
+        # Margen mayor al polling para no perder la alarma por desfase de segundos.
+        if abs((base_dt - ahora).total_seconds()) > 75:
             continue
 
         a.disparada_at = timezone.now()
@@ -1565,25 +1602,7 @@ def pendientes(request):
             "id": a.id,
         }
 
-        vapid_private = getattr(settings, "VAPID_PRIVATE_KEY", None)
-        vapid_claims = {"sub": "mailto:tuequipo@eva.com"}
-
-        # Enviar a todas las suscripciones registradas
-        for sub in PushSubscription.objects.all():
-            try:
-                webpush(
-                    subscription_info={
-                        "endpoint": sub.endpoint,
-                        "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
-                    },
-                    data=json.dumps(payload),
-                    vapid_private_key=vapid_private,
-                    vapid_claims=vapid_claims,
-                )
-                print(f"📨 Push enviado a {sub.usuario.username if sub.usuario else 'desconocido'}")
-            except WebPushException as e:
-                print(f"⚠️ Error push: {e}")
-                sub.delete()  # limpia suscripciones caducadas
+        _enviar_webpush_a_usuario(request.user, payload)
 
     return JsonResponse({"ok": True, "alarmas": data})
 
@@ -1596,14 +1615,15 @@ def marcar_entregada(request):
     try:
         a = Alarma.objects.get(id=_id, usuario=request.user)
 
-        # 🟢 Si la alarma NO tiene días definidos (una sola vez)
-        if not a.dias:
+        dias = (a.dias or "").strip()
+        # Si tiene fecha específica y no es recurrente, es de una sola vez.
+        if not dias and a.fecha:
             a.entregada = True
             a.activa = False
             logger.info(f"✅ Alarma única desactivada: #{a.id}")
         else:
-            # 🟡 Si la alarma es recurrente (tiene días)
-            # Solo marcamos que ya sonó, pero la mantenemos activa
+            # Recurrente por días o diaria (sin fecha): sigue activa.
+            a.entregada = False
             a.disparada_at = timezone.now()
             logger.info(f"🔁 Alarma recurrente sonó pero sigue activa: #{a.id}")
 
@@ -2207,9 +2227,10 @@ def save_subscription(request):
             defaults={"usuario": request.user, "p256dh": p256dh, "auth": auth},
         )
         if not created:
+            sub.usuario = request.user
             sub.p256dh = p256dh
             sub.auth = auth
-            sub.save(update_fields=["p256dh", "auth"])
+            sub.save(update_fields=["usuario", "p256dh", "auth"])
 
         return JsonResponse({"ok": True})
     except Exception as e:
@@ -2763,6 +2784,18 @@ def _chat_resolver_contexto(request):
 
     return None, None, None, "Tipo de usuario inválido para chat."
 
+
+def _mysql_get_usuario_basico(usuario_id: int):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT Id_Usuario, Nombre_Completo, correo, Tipo FROM Usuarios WHERE Id_Usuario=%s LIMIT 1",
+            [usuario_id],
+        )
+        row = cursor.fetchone()
+    if not row:
+        return None
+    return {"id": int(row[0]), "nombre": row[1] or "", "correo": row[2] or "", "tipo": row[3] or ""}
+
 @login_required
 @require_GET
 def chat_get_mensajes(request):
@@ -2845,6 +2878,27 @@ def chat_post_enviar(request):
         row = cursor.fetchone()
 
     connection.commit()
+
+    # Push al destinatario de la conversación (si tiene suscripciones activas)
+    receptor_id = cuidador_id if int(emisor_id) == int(adulto_id) else adulto_id
+    receptor = _mysql_get_usuario_basico(receptor_id)
+    receptor_django = None
+    if receptor:
+        receptor_django = _django_user_from_mysql_usuario(receptor.get("nombre") or "", receptor.get("correo") or "")
+
+    if receptor_django:
+        nombre_emisor = (request.user.first_name or request.user.username or "EVA").strip()
+        texto_corto = texto if len(texto) <= 120 else (texto[:117] + "...")
+        url_destino = "/interfaz-cuidador/" if int(receptor_id) == int(cuidador_id) else "/inicio/"
+        payload = {
+            "kind": "chat",
+            "title": f"Nuevo mensaje de {nombre_emisor}",
+            "body": texto_corto,
+            "tag": f"chat-{adulto_id}-{cuidador_id}",
+            "url": url_destino,
+            "id": new_id,
+        }
+        _enviar_webpush_a_usuario(receptor_django, payload)
 
     return JsonResponse({
         "ok": True,

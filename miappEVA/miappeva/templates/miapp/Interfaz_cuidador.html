@@ -1329,6 +1329,13 @@ function cerrarMenuAgregar() {
   if (!mapEl) return;
 
   const MAPBOX_TOKEN = "{{ mapbox_token|default:'' }}";
+  const MAP_SIN_SENAL_COOLDOWN_MS = 10 * 60 * 1000;
+  const MAP_SIN_SENAL_KEY = "eva_mapa_sin_senal_last";
+  const MAP_RESTABLECIDA_COOLDOWN_MS = 5 * 60 * 1000;
+  const MAP_RESTABLECIDA_KEY = "eva_mapa_restablecida_last";
+  const MAP_ZONA_SEGURA_COOLDOWN_MS = 10 * 60 * 1000;
+  const MAP_ZONA_SEGURA_KEY = "eva_mapa_zona_segura_last";
+  const MAP_GEOFENCE_RADIUS_M = 300;
 
   function showAlert(msg, tipo="warn") {
     if (!alerta) return;
@@ -1344,6 +1351,68 @@ function cerrarMenuAgregar() {
   }
 
   function hideAlert() { alerta?.classList.add("hidden"); }
+
+  let ultimoSinSenal = null;
+  let geofenceCentro = null;
+  let estabaFueraZona = false;
+
+  function haversineM(lat1, lng1, lat2, lng2) {
+    const R = 6371000;
+    const toRad = (d) => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  async function notificarMapa(msg, tag, storageKey, cooldownMs) {
+    try {
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+      const last = parseInt(localStorage.getItem(storageKey) || "0", 10) || 0;
+      if ((Date.now() - last) < cooldownMs) return;
+      localStorage.setItem(storageKey, String(Date.now()));
+
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) return;
+
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: "SHOW_NOTIFICATION",
+          kind: "ubicacion",
+          title: "Ubicacion EVA",
+          body: msg,
+          tag,
+          url: "/interfaz-cuidador/"
+        });
+      } else {
+        reg.showNotification("Ubicacion EVA", {
+          body: msg,
+          icon: "/static/miapp/icons/icon-192.png",
+          badge: "/static/miapp/icons/icon-192.png",
+          vibrate: [180, 80, 180],
+          tag,
+          requireInteraction: true,
+          data: { kind: "ubicacion", url: "/interfaz-cuidador/" }
+        });
+      }
+    } catch (_) {}
+  }
+
+  async function notificarMapaSinSenal(msg) {
+    await notificarMapa(msg, "ubicacion-sin-senal", MAP_SIN_SENAL_KEY, MAP_SIN_SENAL_COOLDOWN_MS);
+  }
+
+  async function notificarMapaRestablecida(msg) {
+    await notificarMapa(msg, "ubicacion-restablecida", MAP_RESTABLECIDA_KEY, MAP_RESTABLECIDA_COOLDOWN_MS);
+  }
+
+  async function notificarMapaZonaSegura(msg) {
+    await notificarMapa(msg, "ubicacion-zona-segura", MAP_ZONA_SEGURA_KEY, MAP_ZONA_SEGURA_COOLDOWN_MS);
+  }
 
   function formatTime(ts) {
     try {
@@ -1402,6 +1471,10 @@ function cerrarMenuAgregar() {
       const tieneCoords = u && typeof u.lat === "number" && typeof u.lng === "number";
 
       if (!tieneCoords) {
+        if (ultimoSinSenal !== true && data.sin_senal === true) {
+          notificarMapaSinSenal("Sin señal: el adulto no reporta ubicación reciente.");
+        }
+        ultimoSinSenal = !!data.sin_senal;
         if (data.sin_senal === true) {
           showAlert("Sin señal: el adulto no tiene GPS o internet.", "warn");
         } else {
@@ -1409,6 +1482,11 @@ function cerrarMenuAgregar() {
         }
         return;
       }
+
+      if (ultimoSinSenal === true && data.sin_senal === false) {
+        notificarMapaRestablecida("Ubicacion restablecida: el adulto vuelve a reportar posicion.");
+      }
+      ultimoSinSenal = !!data.sin_senal;
 
       // 3) ya que SÍ hay coords, pintamos marker
       if (!marker) marker = new mapboxgl.Marker().setLngLat([u.lng, u.lat]).addTo(map);
@@ -1418,6 +1496,17 @@ function cerrarMenuAgregar() {
         map.flyTo({ center: [u.lng, u.lat], zoom: 15, essential: true });
         yaCentro = true;
       }
+
+      // Geocerca básica: primer punto recibido como centro de zona segura.
+      if (!geofenceCentro) {
+        geofenceCentro = { lat: u.lat, lng: u.lng };
+      }
+      const distM = haversineM(geofenceCentro.lat, geofenceCentro.lng, u.lat, u.lng);
+      const fueraZona = distM > MAP_GEOFENCE_RADIUS_M;
+      if (fueraZona && !estabaFueraZona) {
+        notificarMapaZonaSegura("Zona segura: el adulto salio del radio permitido.");
+      }
+      estabaFueraZona = fueraZona;
 
       // 4) texto de actualización
       if (ubicTxt) {
@@ -1439,8 +1528,13 @@ function cerrarMenuAgregar() {
         "Sin señal en este momento.",
         "warn"
       );
+      if (ultimoSinSenal !== true) {
+        notificarMapaSinSenal("Mapa EVA: sin señal en este momento.");
+      }
+      ultimoSinSenal = true;
     } else {
       hideAlert();
+      if (data.sin_senal === false) ultimoSinSenal = false;
     }
 
     } catch (e) {
@@ -1791,11 +1885,14 @@ function cerrarMenuAgregar() {
   // ===== STATE =====
   let pollTimer = null;
   let isOpen = false;
+  let historialCargado = false;
 
   // Estos los devuelve el server en GET /chat/mensajes
   let adultoId = null;
   let cuidadorId = null;
   let emisorId = null;
+  let unreadCount = 0;
+  let lastNotifiedIncomingId = 0;
 
   // ===== CSRF =====
   function getCookie(name) {
@@ -1819,6 +1916,47 @@ function cerrarMenuAgregar() {
     const k = storageKey();
     if (!k) return;
     localStorage.setItem(k, String(id || 0));
+  }
+
+  function ensureChatBadge() {
+    if (!btnChat) return null;
+    let badge = btnChat.querySelector("[data-chat-badge='1']");
+    return badge;
+  }
+
+  function updateChatBadge() {
+    const badge = ensureChatBadge();
+    if (!badge) return; // contador desactivado
+    badge.classList.add("hidden");
+    badge.textContent = "";
+  }
+
+  async function notifyIncomingChat(mensaje) {
+    try {
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
+      const body = (mensaje || "Tienes un nuevo mensaje.").toString().trim() || "Tienes un nuevo mensaje.";
+      const payload = {
+        type: "SHOW_NOTIFICATION",
+        kind: "chat",
+        title: "Nuevo mensaje",
+        body,
+        tag: `chat-${adultoId || "a"}-${cuidadorId || "c"}`,
+        url: "/interfaz-cuidador/"
+      };
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) return;
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage(payload);
+      } else {
+        await reg.showNotification(payload.title, {
+          body: payload.body,
+          icon: "/static/miapp/icons/icon-192.png",
+          badge: "/static/miapp/icons/icon-192.png",
+          tag: payload.tag,
+          data: { url: payload.url, kind: "chat" }
+        });
+      }
+    } catch (_) {}
   }
 
   // ===== UI HELPERS =====
@@ -1936,8 +2074,10 @@ function cerrarMenuAgregar() {
   async function pollOnce() {
     if (!canPoll()) return;
 
+    const cargarHistorial = !historialCargado || box.children.length === 0;
     const lastId = getLastId();
-    const data = await apiGetMensajes(lastId);
+    const afterId = cargarHistorial ? 0 : lastId;
+    const data = await apiGetMensajes(afterId);
 
     // set contexto conversación (solo 1a vez normalmente)
     adultoId = data.adulto_id;
@@ -1963,6 +2103,8 @@ function cerrarMenuAgregar() {
       const upTo = msgs[msgs.length - 1].id;
       try { await apiMarkSeen(upTo); } catch (e) {}
     }
+
+    if (cargarHistorial) historialCargado = true;
   }
 
   function startPolling() {
@@ -1978,6 +2120,39 @@ function cerrarMenuAgregar() {
     pollTimer = null;
   }
 
+  async function pollBadgeOnce() {
+    if (isOpen || document.hidden) return;
+    const lastId = getLastId();
+    const data = await apiGetMensajes(lastId);
+
+    adultoId = data.adulto_id;
+    cuidadorId = data.cuidador_id;
+    emisorId = data.emisor_id;
+
+    const msgs = data.mensajes || [];
+    let maxId = lastId;
+    let nuevosEntrantes = 0;
+    let ultimoEntrante = null;
+
+    for (const m of msgs) {
+      if (m.id > maxId) maxId = m.id;
+      if (m.emisor_id !== emisorId) {
+        nuevosEntrantes += 1;
+        ultimoEntrante = m;
+      }
+    }
+
+    if (nuevosEntrantes > 0) {
+      unreadCount += nuevosEntrantes;
+      updateChatBadge();
+      if (ultimoEntrante && Number(ultimoEntrante.id) > Number(lastNotifiedIncomingId || 0)) {
+        lastNotifiedIncomingId = Number(ultimoEntrante.id);
+        notifyIncomingChat(ultimoEntrante.mensaje);
+      }
+    }
+    if (maxId > lastId) setLastId(maxId);
+  }
+
   // ===== OPEN / CLOSE =====
   async function openChat() {
     if (isOpen) return;
@@ -1985,6 +2160,8 @@ function cerrarMenuAgregar() {
 
     panel.classList.remove("hidden");
     setHint("Conectando…");
+    unreadCount = 0;
+    updateChatBadge();
 
     // Primer poll para obtener adultoId/cuidadorId/emisorId y pintar
     try {
@@ -2030,6 +2207,17 @@ function cerrarMenuAgregar() {
     return r;
   }
 
+  async function ensureMicPermission() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return true;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(t => t.stop());
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function showVozModal(texto) {
     if (!modalVoz) return;
     lastVoiceText = texto || "";
@@ -2044,9 +2232,15 @@ function cerrarMenuAgregar() {
     modalVoz.classList.remove("flex");
   }
 
-  function startDictation() {
+  async function startDictation() {
     if (!supportsSpeechRecognition()) {
       setHint("Tu navegador no soporta dictado por voz.");
+      return;
+    }
+
+    const micOk = await ensureMicPermission();
+    if (!micOk) {
+      setHint("No tengo permiso de microfono. Habilitalo en el candado del navegador.");
       return;
     }
 
@@ -2069,15 +2263,28 @@ function cerrarMenuAgregar() {
       showVozModal(limpio);
     };
 
-    recognition.onerror = () => {
-      setHint("Error de micrófono/dictado. Reintenta.");
+    recognition.onerror = (ev) => {
+      const code = (ev && ev.error) ? String(ev.error) : "";
+      if (code === "not-allowed" || code === "service-not-allowed") {
+        setHint("Permiso de microfono bloqueado.");
+      } else if (code === "no-speech") {
+        setHint("No detecte voz. Intenta de nuevo.");
+      } else {
+        setHint("Error de microfono/dictado. Reintenta.");
+      }
+      recognition = null;
     };
 
     recognition.onend = () => {
       // si terminó sin resultados, el hint se queda
     };
 
-    try { recognition.start(); } catch (e) {}
+    try {
+      recognition.start();
+    } catch (_) {
+      recognition = null;
+      setHint("No pude activar el microfono. Intenta otra vez.");
+    }
   }
 
   // ===== EVENTS =====
@@ -2114,10 +2321,10 @@ function cerrarMenuAgregar() {
   });
 
   // mic
-  if (btnMic) btnMic.addEventListener("click", () => {
+  if (btnMic) btnMic.addEventListener("click", async () => {
     // si el chat no está abierto, ábrelo primero
-    if (!isOpen) openChat();
-    startDictation();
+    if (!isOpen) await openChat();
+    await startDictation();
   });
 
   // modal voz botones
@@ -2126,9 +2333,9 @@ function cerrarMenuAgregar() {
     setHint("");
   });
 
-  if (btnRepetir) btnRepetir.addEventListener("click", () => {
+  if (btnRepetir) btnRepetir.addEventListener("click", async () => {
     hideVozModal();
-    startDictation();
+    await startDictation();
   });
 
   if (btnConfirmar) btnConfirmar.addEventListener("click", async () => {
@@ -2156,7 +2363,14 @@ function cerrarMenuAgregar() {
   document.addEventListener("visibilitychange", () => {
     if (!canPoll()) stopPolling();
     else startPolling();
+    if (!document.hidden) pollBadgeOnce().catch(() => {});
   });
+
+  setInterval(() => {
+    pollBadgeOnce().catch(() => {});
+  }, POLL_MS);
+
+  updateChatBadge();
 
 })();
 </script>
