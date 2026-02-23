@@ -47,6 +47,35 @@ except Exception:
     class WebPushException(Exception):
         pass
 
+#------bloqueo premum------#
+def _mysql_cuidador_premium_activo(cuidador_id: int) -> bool:
+    """
+    Premium del cuidador = existe una membresía 'activa' cuya fecha_renovacion >= hoy.
+    """
+    hoy = timezone.localdate()
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT 1
+            FROM membresia
+            WHERE cuidador_id=%s
+              AND estado='activa'
+              AND fecha_renovacion >= %s
+            ORDER BY fecha_renovacion DESC
+            LIMIT 1
+        """, [cuidador_id, hoy])
+        row = cursor.fetchone()
+    return bool(row)
+
+def _mysql_adulto_premium_activo(adulto_id: int) -> bool:
+    """
+    Premium del adulto = está vinculado con un cuidador y ese cuidador tiene premium activo.
+    """
+    cuidador = _mysql_get_cuidador_por_adulto(adulto_id)  # tú ya tienes este helper
+    if not cuidador:
+        return False
+    return _mysql_cuidador_premium_activo(int(cuidador["id"]))
+
+
 def _resolver_mysql_usuario_id(request):
     ident = (request.user.username or "").strip()
     mysql_user = verificar_usuario_en_bd(ident) if ident else None
@@ -551,6 +580,10 @@ def _guardar_tratamiento_medicamentos_alarmas(usuario_id, medicamentos, django_u
 @login_required
 @require_POST
 def crear_alarmas_receta(request):
+    ok, resp = _require_premium_adulto(request)
+    if not ok:
+        return resp
+    
     try:
         foto = request.FILES.get("foto")
         if not foto:
@@ -818,25 +851,30 @@ def inicio(request):
     nombre = request.user.first_name or request.user.username
     ultimas = OrdenVoz.objects.filter(usuario=request.user)[:5]
 
-    # --- NUEVO: traer id/tipo desde MySQL y obtener/generar código único ---
     ident = (request.user.username or "").strip()
-    mysql_user = verificar_usuario_en_bd(ident)  # ya te devuelve id, tipo, etc.
+    mysql_user = verificar_usuario_en_bd(ident)
 
     codigo_unico = None
+    es_premium = False
+
     if mysql_user and mysql_user.get("tipo") == "adulto":
-        usuario_id = mysql_user.get("id")
+        usuario_id = int(mysql_user.get("id") or 0)
         if usuario_id:
             codigo_unico = _mysql_get_or_create_codigo_unico(usuario_id)
+
+            # ✅ PREMIUM si está vinculado y el cuidador tiene membresía activa
+            es_premium = _mysql_adulto_premium_activo(usuario_id)
 
     return render(request, 'miapp/inicio.html', {
         "nombre": nombre,
         "ultimas": ultimas,
         "codigo_unico": codigo_unico,
+
+        # ✅ NUEVO
+        "es_premium": es_premium,
     })
 
-# ---------------------------
-# CÓDIGO ÚNICO (ADULTO)
-# ---------------------------
+# ---------CÓDIGO ÚNICO (ADULTO)------#
 def _mysql_get_codigo_unico(usuario_id: int):
     with connection.cursor() as cursor:
         cursor.execute(
@@ -2130,6 +2168,9 @@ def send_push_notification(request):
 @login_required
 @require_POST
 def crear_emergencia(request):
+    ok, resp = _require_premium_adulto(request)
+    if not ok:
+        return resp
     mysql_user = None
     usuario_id = _resolver_mysql_usuario_id(request)
     if usuario_id:
@@ -2336,6 +2377,9 @@ def _mysql_set_compartir_ubicacion(usuario_id: int, activo: bool):
 
 @login_required
 def ubicacion_estado(request):
+    ok, resp = _require_premium_adulto(request)
+    if not ok:
+        return resp
     usuario_id = _resolver_mysql_usuario_id(request)
     if not usuario_id:
         return JsonResponse({"ok": False, "error": "No pude resolver tu usuario MySQL."}, status=400)
@@ -2350,6 +2394,9 @@ def ubicacion_estado(request):
 @login_required
 @require_POST
 def ubicacion_toggle(request):
+    ok, resp = _require_premium_adulto(request)
+    if not ok:
+        return resp
     usuario_id = _resolver_mysql_usuario_id(request)
     if not usuario_id:
         return JsonResponse({"ok": False, "error": "No pude resolver tu usuario MySQL."}, status=400)
@@ -2380,6 +2427,9 @@ def ubicacion_toggle(request):
 @login_required
 @require_POST
 def ubicacion_ping(request):
+    ok, resp = _require_premium_adulto(request)
+    if not ok:
+        return resp
     usuario_id = _resolver_mysql_usuario_id(request)
     if not usuario_id:
         return JsonResponse({"ok": False, "error": "No pude resolver tu usuario MySQL."}, status=400)
@@ -2650,6 +2700,9 @@ def _mysql_get_usuario_basico(usuario_id: int):
 @login_required
 @require_GET
 def chat_get_mensajes(request):
+    ok, resp = _require_premium_chat(request)
+    if not ok:
+        return resp
     adulto_id, cuidador_id, emisor_id, err = _chat_resolver_contexto(request)
     if err:
         return JsonResponse({"ok": False, "error": err}, status=403)
@@ -2702,6 +2755,9 @@ def chat_get_mensajes(request):
 @login_required
 @require_POST
 def chat_post_enviar(request):
+    ok, resp = _require_premium_chat(request)
+    if not ok:
+        return resp
     adulto_id, cuidador_id, emisor_id, err = _chat_resolver_contexto(request)
     if err:
         return JsonResponse({"ok": False, "error": err}, status=403)
@@ -2760,6 +2816,9 @@ def chat_post_enviar(request):
 @login_required
 @require_POST
 def chat_post_marcar_visto(request):
+    ok, resp = _require_premium_chat(request)
+    if not ok:
+        return resp
     adulto_id, cuidador_id, emisor_id, err = _chat_resolver_contexto(request)
     if err:
         return JsonResponse({"ok": False, "error": err}, status=403)
@@ -2842,6 +2901,60 @@ def _mysql_get_cuidador_por_adulto(adulto_id: int):
         return None
     return {"id": row[0], "nombre": row[1], "correo": row[2]}
 
+#-------Bloqueo premium---------#
+def _require_premium_adulto(request):
+    usuario_id = _resolver_mysql_usuario_id(request)
+    if not usuario_id:
+        return False, JsonResponse({"ok": False, "error": "No pude resolver tu usuario MySQL."}, status=400)
+
+    mysql_user = None
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT Tipo FROM Usuarios WHERE Id_Usuario=%s LIMIT 1", [usuario_id])
+        row = cursor.fetchone()
+        if row:
+            mysql_user = {"tipo": row[0]}
+
+    if not mysql_user or mysql_user.get("tipo") != "adulto":
+        return False, JsonResponse({"ok": False, "error": "Solo adultos."}, status=403)
+
+    if not _mysql_adulto_premium_activo(int(usuario_id)):
+        return False, JsonResponse({"ok": False, "error": "Función premium. Vincúlate con tu cuidador para activarla."}, status=403)
+
+    return True, None
+
+def _require_premium_chat(request):
+    """
+    Chat premium:
+    - Si eres adulto: debes estar vinculado a cuidador premium.
+    - Si eres cuidador: debes tener membresía activa.
+    """
+    usuario_id = _resolver_mysql_usuario_id(request)
+    if not usuario_id:
+        return False, JsonResponse({"ok": False, "error": "No pude resolver tu usuario MySQL."}, status=400)
+
+    # Tipo en MySQL
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT Tipo FROM Usuarios WHERE Id_Usuario=%s LIMIT 1", [usuario_id])
+        row = cursor.fetchone()
+    tipo = (row[0] if row else None)
+
+    if tipo == "adulto":
+        if not _mysql_adulto_premium_activo(int(usuario_id)):
+            return False, JsonResponse(
+                {"ok": False, "error": "Chat es premium. Vincúlate con tu cuidador para activarlo."},
+                status=403
+            )
+        return True, None
+
+    if tipo == "cuidador":
+        if not _mysql_cuidador_premium_activo(int(usuario_id)):
+            return False, JsonResponse(
+                {"ok": False, "error": "Chat es premium. Activa tu membresía para usarlo."},
+                status=403
+            )
+        return True, None
+
+    return False, JsonResponse({"ok": False, "error": "Tipo inválido para chat."}, status=403)
 
 #-----flutter------#
 from django.views.decorators.csrf import csrf_exempt
