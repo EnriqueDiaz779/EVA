@@ -898,23 +898,6 @@ def _mysql_get_adulto_por_codigo(codigo: str):
 
     return {"id": row[0], "nombre": row[1], "correo": row[2]}
 
-#-----VÍNCULO CUIDADOR <-> ADULTO (MySQL)------#
-def _mysql_get_vinculo_activo_cuidador(cuidador_id: int):
-    """Retorna el adulto vinculado (id, nombre) si existe vínculo activo."""
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT a.Adulto_id, u.Nombre_Completo "
-            "FROM adulto_cuidador a "
-            "JOIN Usuarios u ON u.Id_Usuario=a.Adulto_id "
-            "WHERE a.Cuidador_id=%s AND a.Activo=1 "
-            "ORDER BY a.fecha_asignacion DESC LIMIT 1",
-            [cuidador_id],
-        )
-        row = cursor.fetchone()
-    if not row:
-        return None
-    return {"id": row[0], "nombre": row[1]}
-
 
 def _mysql_get_vinculo_por_adulto(adulto_id: int):
     with connection.cursor() as cursor:
@@ -928,43 +911,6 @@ def _mysql_get_vinculo_por_adulto(adulto_id: int):
             return None
         return {"id": row[0], "cuidador_id": row[1], "activo": row[2]}
 
-def _mysql_set_vinculo_activo(cuidador_id: int, adulto_id: int, codigo: str):
-    """
-    Permite múltiples adultos por cuidador, pero solo 1 activo a la vez (por cuidador).
-    - Si el vínculo (adulto-cuidador) no existe: lo crea.
-    - Si existe: lo actualiza.
-    - Siempre deja como Activo=1 el seleccionado, y los demás del cuidador Activo=0.
-    - Si el adulto estaba vinculado a OTRO cuidador: conflicto.
-    """
-
-    existente = _mysql_get_vinculo_por_adulto(adulto_id)
-
-    with connection.cursor() as cursor:
-        if existente and int(existente["cuidador_id"]) != int(cuidador_id):
-            raise ValueError("Este adulto ya está vinculado con otro cuidador.")
-
-        # 1) Desactivar TODOS los vínculos del cuidador
-        cursor.execute(
-            "UPDATE adulto_cuidador SET Activo=0 WHERE Cuidador_id=%s",
-            [cuidador_id],
-        )
-
-        # 2) Crear o actualizar vínculo con este adulto
-        if not existente:
-            cursor.execute(
-                "INSERT INTO adulto_cuidador (Codigo_unico, Activo, Adulto_id, Cuidador_id, fecha_asignacion) "
-                "VALUES (%s, 1, %s, %s, NOW())",
-                [codigo, adulto_id, cuidador_id],
-            )
-        else:
-            cursor.execute(
-                "UPDATE adulto_cuidador "
-                "SET Codigo_unico=%s, Activo=1, fecha_asignacion=NOW() "
-                "WHERE Adulto_id=%s AND Cuidador_id=%s",
-                [codigo, adulto_id, cuidador_id],
-            )
-
-    connection.commit()
 
 def _django_user_from_mysql_usuario(nombre: str, correo: str):
     """Mapea un usuario MySQL a un User de Django por correo o nombre."""
@@ -994,22 +940,6 @@ def _django_user_from_mysql_usuario(nombre: str, correo: str):
 def _django_user_from_mysql_adulto(nombre: str, correo: str):
     """Compat: mantiene el helper previo para usos existentes."""
     return _django_user_from_mysql_usuario(nombre, correo)
-
-
-def _mysql_get_cuidador_activo_por_adulto(adulto_id: int):
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT a.Cuidador_id, u.Nombre_Completo, u.correo "
-            "FROM adulto_cuidador a "
-            "JOIN Usuarios u ON u.Id_Usuario=a.Cuidador_id "
-            "WHERE a.Adulto_id=%s AND a.Activo=1 "
-            "ORDER BY a.fecha_asignacion DESC LIMIT 1",
-            [adulto_id],
-        )
-        row = cursor.fetchone()
-    if not row:
-        return None
-    return {"id": row[0], "nombre": row[1], "correo": row[2]}
 
 
 def _enviar_webpush_a_usuario(django_user, payload: dict) -> int:
@@ -1042,20 +972,6 @@ def _enviar_webpush_a_usuario(django_user, payload: dict) -> int:
 
     return total
 
-#------lista adultos mayores en perfil del cuidador------#
-def _mysql_list_adultos_cuidador(cuidador_id: int):
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT a.Adulto_id, u.Nombre_Completo, a.Activo "
-            "FROM adulto_cuidador a "
-            "JOIN Usuarios u ON u.Id_Usuario=a.Adulto_id "
-            "WHERE a.Cuidador_id=%s "
-            "ORDER BY a.fecha_asignacion DESC",
-            [cuidador_id],
-        )
-        rows = cursor.fetchall()
-
-    return [{"id": r[0], "nombre": r[1], "activo": bool(r[2])} for r in rows]
 
 #------vincular adulto por codigo-------#
 @login_required
@@ -1076,15 +992,14 @@ def vincular_adulto_por_codigo(request):
         return JsonResponse({"ok": False, "error": "Código inválido."}, status=404)
 
     try:
-        _mysql_set_vinculo_activo(cuidador_id, adulto["id"], codigo)
+        _mysql_crear_vinculo_unico(cuidador_id, adulto["id"], codigo)
     except ValueError as ve:
-        return JsonResponse({"ok": False, "error": str(ve)}, status=409)
-    except Exception as e:
-        try:
-            connection.rollback()
-        except Exception:
-            pass
-        return JsonResponse({"ok": False, "error": f"No se pudo vincular: {e}"}, status=500)
+        code = str(ve)
+        if code == "YA_VINCULADO":
+           return JsonResponse({"ok": False, "error": "Ya tienes un adulto vinculado."}, status=409)
+        if code == "ADULTO_CON_OTRO_CUIDADOR":
+           return JsonResponse({"ok": False, "error": "Este adulto ya está vinculado con otro cuidador."}, status=409)
+        return JsonResponse({"ok": False, "error": "No se pudo vincular."}, status=500)
 
     meds = []
     adulto_django = _django_user_from_mysql_adulto(adulto["nombre"], adulto.get("correo") or "")
@@ -1102,78 +1017,21 @@ def vincular_adulto_por_codigo(request):
             for m in qs
         ]
 
-    # ✅ AQUÍ (antes del return): lista de adultos vinculados del cuidador
-    adultos = _mysql_list_adultos_cuidador(cuidador_id)
-
-    # ✅ Y aquí ya lo mandas en el JSON
     return JsonResponse({
-        "ok": True,
-        "adulto": {"id": adulto["id"], "nombre": adulto["nombre"]},
-        "adultos": adultos,                 # ✅ agregado
-        "medicamentos": meds
+      "ok": True,
+      "adulto": {"id": adulto["id"], "nombre": adulto["nombre"]},
+      "medicamentos": meds
     })
 
 #----------cambiar adulto mayor------#
 @login_required
 @require_POST
 def cambiar_adulto_actual(request):
-    ident = (request.user.username or "").strip()
-    mysql_user = verificar_usuario_en_bd(ident)
-    if not mysql_user or mysql_user.get("tipo") != "cuidador":
-        return JsonResponse({"ok": False, "error": "Solo cuidadores."}, status=403)
-
-    cuidador_id = mysql_user["id"]
-    adulto_id = request.POST.get("adulto_id")
-
-    try:
-        adulto_id = int(adulto_id)
-    except Exception:
-        return JsonResponse({"ok": False, "error": "adulto_id inválido"}, status=400)
-
-    # Validar que ese adulto pertenezca a este cuidador
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT u.Id_Usuario, u.Nombre_Completo, u.correo "
-            "FROM adulto_cuidador a "
-            "JOIN Usuarios u ON u.Id_Usuario=a.Adulto_id "
-            "WHERE a.Cuidador_id=%s AND a.Adulto_id=%s LIMIT 1",
-            [cuidador_id, adulto_id],
-        )
-        row = cursor.fetchone()
-
-    if not row:
-        return JsonResponse({"ok": False, "error": "Ese adulto no está vinculado contigo."}, status=404)
-
-    adulto = {"id": row[0], "nombre": row[1], "correo": row[2]}
-
-    # Desactivar otros y activar este
-    with connection.cursor() as cursor:
-        cursor.execute("UPDATE adulto_cuidador SET Activo=0 WHERE Cuidador_id=%s", [cuidador_id])
-        cursor.execute(
-            "UPDATE adulto_cuidador SET Activo=1, fecha_asignacion=NOW() "
-            "WHERE Cuidador_id=%s AND Adulto_id=%s",
-            [cuidador_id, adulto_id],
-        )
-    connection.commit()
-
-    # Cargar meds del nuevo adulto activo
-    meds = []
-    adulto_django = _django_user_from_mysql_adulto(adulto["nombre"], adulto.get("correo") or "")
-    if adulto_django:
-        qs = MedicamentoReconocido.objects.filter(usuario=adulto_django).order_by("-creado")[:10]
-        meds = [
-            {"nombre": (m.nombre_detectado or ""), "descripcion": (m.descripcion or ""), "confianza": float(m.confianza or 0.0)}
-            for m in qs
-        ]
-
-    adultos = _mysql_list_adultos_cuidador(cuidador_id)
-
-    return JsonResponse({"ok": True, "adulto": {"id": adulto["id"], "nombre": adulto["nombre"]}, "adultos": adultos, "medicamentos": meds})
+    return JsonResponse({"ok": False, "error": "No disponible en plan sencillo."}, status=403)
 
 #------interfaz cuidador-----#
 @login_required
 def interfaz_cuidador(request):
-    import json  # ✅ PASO 3 (asegura json disponible aquí)
 
     ident = (request.user.username or "").strip()
     mysql_user = verificar_usuario_en_bd(ident)
@@ -1195,12 +1053,9 @@ def interfaz_cuidador(request):
     adulto_vinculado = None
     meds_payload = []
 
-    adultos = []  # ✅ PASO 1: inicializa la lista SIEMPRE
-
     if cuidador_id:
-        adultos = _mysql_list_adultos_cuidador(cuidador_id)  # ✅ PASO 2: trae la lista de adultos vinculados
 
-        adulto_vinculado = _mysql_get_vinculo_activo_cuidador(cuidador_id)
+        adulto_vinculado = _mysql_get_unico_vinculo_cuidador(cuidador_id)
         if adulto_vinculado:
             with connection.cursor() as cursor:
                 cursor.execute(
@@ -1227,9 +1082,6 @@ def interfaz_cuidador(request):
         "adulto_vinculado": adulto_vinculado,
         "meds_adulto": meds_payload,
         "bloqueado_por_vinculo": (adulto_vinculado is None),
-
-        # ✅ PASO 3: manda la lista para que el template la pinte al cargar
-        "adultos_json": json.dumps(adultos),
 
         # ✅ PASO 4: MANDA EL TOKEN DE MAPBOX AL TEMPLATE
         "mapbox_token": settings.MAPBOX_TOKEN_PUBLIC,
@@ -1936,7 +1788,7 @@ def obtener_alarmas_cuidador(request):
         return JsonResponse({"ok": False, "error": "Solo cuidadores."}, status=403)
 
     cuidador_id = mysql_user["id"]
-    adulto_vinculado = _mysql_get_vinculo_activo_cuidador(cuidador_id)
+    adulto_vinculado = _mysql_get_unico_vinculo_cuidador(cuidador_id)
     if not adulto_vinculado:
         return JsonResponse({"ok": True, "alarmas": []})
 
@@ -1976,7 +1828,6 @@ def obtener_alarmas_cuidador(request):
 
 
 #------helpers cuidador -> adulto-----#
-# no decorator: helper interno
 def _cuidador_get_adulto_django(request):
     ident = (request.user.username or "").strip()
     mysql_user = verificar_usuario_en_bd(ident)
@@ -1984,7 +1835,7 @@ def _cuidador_get_adulto_django(request):
         return None, "Solo cuidadores."
 
     cuidador_id = mysql_user["id"]
-    adulto_vinculado = _mysql_get_vinculo_activo_cuidador(cuidador_id)
+    adulto_vinculado = _mysql_get_unico_vinculo_cuidador(cuidador_id)
     if not adulto_vinculado:
         return None, "No hay adulto vinculado."
 
@@ -2295,9 +2146,9 @@ def crear_emergencia(request):
         return JsonResponse({"ok": False, "error": "Solo adultos pueden emitir SOS."}, status=403)
 
     adulto_id = mysql_user["id"]
-    cuidador = _mysql_get_cuidador_activo_por_adulto(adulto_id)
+    cuidador = _mysql_get_cuidador_por_adulto(adulto_id)
     if not cuidador:
-        return JsonResponse({"ok": False, "error": "No hay cuidador vinculado activo."}, status=409)
+        return JsonResponse({"ok": False, "error": "No hay cuidador vinculado."}, status=409)
 
     with connection.cursor() as cursor:
         cursor.execute(
@@ -2373,8 +2224,8 @@ def cuidador_emergencias_pendientes(request):
         return JsonResponse({"ok": False, "error": "Solo cuidadores."}, status=403)
 
     cuidador_id = mysql_user["id"]
-    adulto = _mysql_get_vinculo_activo_cuidador(cuidador_id)
-    if not adulto:
+    adulto_vinculado = _mysql_get_unico_vinculo_cuidador(cuidador_id)
+    if not adulto_vinculado:
         return JsonResponse({"ok": True, "emergencias": []})
 
     with connection.cursor() as cursor:
@@ -2383,7 +2234,7 @@ def cuidador_emergencias_pendientes(request):
             "FROM emergencia "
             "WHERE cuidador_id=%s AND adulto_id=%s AND estado IN ('enviada','vista') "
             "ORDER BY creado_en DESC LIMIT 20",
-            [cuidador_id, adulto["id"]],
+            [cuidador_id, adulto_vinculado["id"]],
         )
         rows = cursor.fetchall()
 
@@ -2397,7 +2248,7 @@ def cuidador_emergencias_pendientes(request):
                 "estado": r[3],
                 "creado_en": r[4].isoformat() if r[4] else None,
                 "atendido_en": r[5].isoformat() if r[5] else None,
-                "adulto": adulto,
+                "adulto": adulto_vinculado,
             }
         )
 
@@ -2609,8 +2460,8 @@ def cuidador_ultima_ubicacion(request):
         return JsonResponse({"ok": False, "error": "Solo cuidadores."}, status=403)
 
     cuidador_id = mysql_user["id"]
-    adulto = _mysql_get_vinculo_activo_cuidador(cuidador_id)
-    if not adulto:
+    adulto_vinculado = _mysql_get_unico_vinculo_cuidador(cuidador_id)
+    if not adulto_vinculado:
         return JsonResponse({
             "ok": True,
             "adulto": None,
@@ -2619,14 +2470,14 @@ def cuidador_ultima_ubicacion(request):
             "ultima": None
         })
 
-    adulto_id = adulto["id"]
+    adulto_id = adulto_vinculado["id"]
     compartir = _mysql_get_compartir_ubicacion(adulto_id)
 
     # Si desactivó, no regresamos coordenadas (para privacidad)
     if not compartir:
         return JsonResponse({
             "ok": True,
-            "adulto": adulto,
+            "adulto": adulto_vinculado,
             "compartir_ubicacion": False,
             "sin_senal": False,
             "ultima": None
@@ -2645,7 +2496,7 @@ def cuidador_ultima_ubicacion(request):
     if not row:
         return JsonResponse({
             "ok": True,
-            "adulto": adulto,
+            "adulto": adulto_vinculado,
             "compartir_ubicacion": True,
             "sin_senal": True,
             "ultima": None
@@ -2661,7 +2512,7 @@ def cuidador_ultima_ubicacion(request):
 
     return JsonResponse({
         "ok": True,
-        "adulto": adulto,
+        "adulto": adulto_vinculado,
         "compartir_ubicacion": True,
         "sin_senal": sin_senal,
         "ultima": {
@@ -2702,14 +2553,14 @@ def cuidador_historial_ubicacion(request):
         return JsonResponse({"ok": False, "error": "Solo cuidadores."}, status=403)
 
     cuidador_id = mysql_user["id"]
-    adulto = _mysql_get_vinculo_activo_cuidador(cuidador_id)
-    if not adulto:
+    adulto_vinculado = _mysql_get_unico_vinculo_cuidador(cuidador_id)
+    if not adulto_vinculado:
         return JsonResponse({"ok": True, "adulto": None, "puntos": []})
 
-    adulto_id = adulto["id"]
+    adulto_id = adulto_vinculado["id"]
 
     if not _mysql_get_compartir_ubicacion(adulto_id):
-        return JsonResponse({"ok": True, "adulto": adulto, "compartir_ubicacion": False, "puntos": []})
+        return JsonResponse({"ok": True, "adulto": adulto_vinculado, "compartir_ubicacion": False, "puntos": []})
 
     horas = 24  # 🔒 fijo siempre
 
@@ -2743,7 +2594,7 @@ def cuidador_historial_ubicacion(request):
 
     return JsonResponse({
         "ok": True,
-        "adulto": adulto,
+        "adulto": adulto_vinculado,
         "compartir_ubicacion": True,
         "puntos": puntos
     })
@@ -2768,18 +2619,18 @@ def _chat_resolver_contexto(request):
 
     if tipo == "adulto":
         adulto_id = emisor_id
-        cuidador = _mysql_get_cuidador_activo_por_adulto(adulto_id)  # tú ya la tienes
+        cuidador = _mysql_get_cuidador_por_adulto(adulto_id)  # tú ya la tienes
         if not cuidador:
-            return None, None, None, "No hay cuidador vinculado activo."
+            return None, None, None, "No hay cuidador vinculado."
         cuidador_id = int(cuidador["id"])
         return adulto_id, cuidador_id, emisor_id, None
 
     if tipo == "cuidador":
         cuidador_id = emisor_id
-        adulto = _mysql_get_vinculo_activo_cuidador(cuidador_id)  # tú ya la tienes
-        if not adulto:
-            return None, None, None, "No hay adulto vinculado activo."
-        adulto_id = int(adulto["id"])
+        adulto_vinculado = _mysql_get_unico_vinculo_cuidador(cuidador_id) # tú ya la tienes
+        if not adulto_vinculado:
+            return None, None, None, "No hay adulto vinculado."
+        adulto_id = int(adulto_vinculado["id"])
         return adulto_id, cuidador_id, emisor_id, None
 
     return None, None, None, "Tipo de usuario inválido para chat."
@@ -2942,6 +2793,55 @@ def chat_post_marcar_visto(request):
 
     connection.commit()
     return JsonResponse({"ok": True, "updated": updated})
+
+#-----Vinculacion 1 a 1 -----
+def _mysql_get_unico_vinculo_cuidador(cuidador_id: int):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT a.Adulto_id, u.Nombre_Completo "
+            "FROM adulto_cuidador a "
+            "JOIN Usuarios u ON u.Id_Usuario=a.Adulto_id "
+            "WHERE a.Cuidador_id=%s "
+            "ORDER BY a.fecha_asignacion DESC LIMIT 1",
+            [cuidador_id],
+        )
+        row = cursor.fetchone()
+    if not row:
+        return None
+    return {"id": row[0], "nombre": row[1]}
+
+def _mysql_crear_vinculo_unico(cuidador_id: int, adulto_id: int, codigo: str):
+    ya = _mysql_get_unico_vinculo_cuidador(cuidador_id)
+    if ya:
+        raise ValueError("YA_VINCULADO")
+
+    existente = _mysql_get_vinculo_por_adulto(adulto_id)
+    if existente and int(existente["cuidador_id"]) != int(cuidador_id):
+        raise ValueError("ADULTO_CON_OTRO_CUIDADOR")
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO adulto_cuidador (Codigo_unico, Activo, Adulto_id, Cuidador_id, fecha_asignacion) "
+            "VALUES (%s, 1, %s, %s, NOW())",
+            [codigo, adulto_id, cuidador_id],
+        )
+    connection.commit()
+
+def _mysql_get_cuidador_por_adulto(adulto_id: int):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT a.Cuidador_id, u.Nombre_Completo, u.correo "
+            "FROM adulto_cuidador a "
+            "JOIN Usuarios u ON u.Id_Usuario=a.Cuidador_id "
+            "WHERE a.Adulto_id=%s "
+            "ORDER BY a.fecha_asignacion DESC LIMIT 1",
+            [adulto_id],
+        )
+        row = cursor.fetchone()
+    if not row:
+        return None
+    return {"id": row[0], "nombre": row[1], "correo": row[2]}
+
 
 #-----flutter------#
 from django.views.decorators.csrf import csrf_exempt

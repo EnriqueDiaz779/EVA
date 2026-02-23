@@ -139,18 +139,13 @@
                   {% endif %}
                 </div>
 
-                <button id="btnAddAdulto"
-                        type="button"
-                        class="w-9 h-9 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-extrabold shadow
-                              flex items-center justify-center transition active:scale-95"
-                        title="Vincular otro adulto">
-                  +
-                </button>
-              </div>
-
-              <div class="mt-3">
-                <p class="text-xs font-bold text-gray-500 mb-2">Adultos vinculados</p>
-                <div id="adultosList" class="space-y-2"></div>
+                {% if not adulto_vinculado %}
+                  <button id="btnAddAdulto"
+                          type="button"
+                          class="w-9 h-9 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-extrabold shadow
+                                flex items-center justify-center transition active:scale-95"
+                          title="Vincular adulto">+</button>
+                {% endif %}
               </div>
             </div>
           </div>
@@ -207,7 +202,6 @@
           </div>
         </div>
       </div>
-
     </div>
   </header>
 
@@ -387,9 +381,6 @@
 
 {% csrf_token %}
 
-<script id="adultosIniciales" type="application/json">
-  {{ adultos_json|default:"[]"|safe }}
-</script>
 
 <!-- ===== MODAL: GENERAR ALARMA DE CITA (ABRE CON +) ===== -->
 <div id="modalCita" class="hidden fixed inset-0 z-[99998]">
@@ -508,7 +499,7 @@
 </div>
 
 <!-- BLOQUEO + MODAL VINCULO -->
-<div id="overlayVinculo" class="{% if not bloqueado_por_vinculo %}hidden{% endif %} fixed inset-0 z-[99999]">
+<div id="overlayVinculo" class="{% if not bloqueado_por_vinculo %}hidden{% endif %} fixed inset-0 z-[99999] pointer-events-auto">
   <div class="absolute inset-0 bg-black/55"></div>
 
   <div class="relative h-full w-full flex items-center justify-center px-4">
@@ -633,7 +624,6 @@
   const btnVincularMini = document.getElementById("btnVincularMini");
   const miniError = document.getElementById("miniError");
 
-  const adultosList = document.getElementById("adultosList");
   const adultoActual = document.getElementById("adultoActual");
 
   const csrfToken = document.querySelector("input[name=csrfmiddlewaretoken]")?.value || "";
@@ -692,14 +682,6 @@
     codigoInput.type = (codigoInput.type === "password") ? "text" : "password";
   });
 
-  function openMini() {
-    if (!miniModalAddAdulto) return;
-    if (miniError) { miniError.classList.add("hidden"); miniError.textContent = ""; }
-    if (codigoMiniInput) codigoMiniInput.value = "";
-    miniModalAddAdulto.classList.remove("hidden");
-  }
-  function closeMini() { miniModalAddAdulto?.classList.add("hidden"); }
-
   function renderAdultoActual(nombre) {
     if (!adultoActual) return;
     if (!nombre) {
@@ -712,38 +694,6 @@
     `;
   }
 
-  function renderListaAdultos(adultos) {
-    if (!adultosList) return;
-
-    if (!Array.isArray(adultos) || adultos.length === 0) {
-      adultosList.innerHTML = `<p class="text-xs text-gray-400">Sin adultos vinculados.</p>`;
-      return;
-    }
-
-    adultosList.innerHTML = adultos.map(a => {
-      const activo = !!a.activo;
-      return `
-        <button type="button"
-          data-adulto-id="${a.id}"
-          class="w-full text-left px-3 py-2 rounded-xl border transition
-                 ${activo ? "border-blue-900 bg-blue-50" : "border-gray-200 bg-white hover:bg-gray-50"}">
-          <div class="flex items-center justify-between">
-            <span class="text-sm font-semibold ${activo ? "text-blue-900" : "text-gray-800"}">${a.nombre}</span>
-            ${activo ? `<span class="text-[10px] font-extrabold text-blue-900">ACTUAL</span>` : ``}
-          </div>
-        </button>
-      `;
-    }).join("");
-
-    adultosList.querySelectorAll("button[data-adulto-id]").forEach(btn => {
-      btn.addEventListener("click", async (ev) => {
-        ev.stopPropagation();
-        const adultoId = btn.getAttribute("data-adulto-id");
-        await cambiarAdultoActual(adultoId);
-      });
-    });
-  }
-
   async function postForm(url, formData) {
     const resp = await fetch(url, {
       method: "POST",
@@ -754,22 +704,24 @@
     return { resp, data };
   }
 
-  async function vincularDesdeOverlay() {
-    const codigo = (codigoInput?.value || "").trim().toUpperCase();
-    if (!codigoError) return;
+  function openMini() {
+    if (!miniModalAddAdulto) return;
+    if (miniError) { miniError.classList.add("hidden"); miniError.textContent = ""; }
+    if (codigoMiniInput) codigoMiniInput.value = "";
+    miniModalAddAdulto.classList.remove("hidden");
+  }
+  function closeMini() { miniModalAddAdulto?.classList.add("hidden"); }
 
-    codigoError.classList.add("hidden");
-    codigoError.textContent = "";
+  toggleMiniCodigo?.addEventListener("click", () => {
+    if (!codigoMiniInput) return;
+    codigoMiniInput.type = (codigoMiniInput.type === "text") ? "password" : "text";
+  });
 
-    if (!codigo) {
-      codigoError.textContent = "Ingresa el código único.";
-      codigoError.classList.remove("hidden");
-      return;
-    }
+  async function vincularPorCodigo(codigo, onError, setLoading) {
+    codigo = (codigo || "").trim().toUpperCase();
+    if (!codigo) { onError?.("Ingresa el código único."); return false; }
 
-    btnConfirmarCodigo.disabled = true;
-    btnConfirmarCodigo.textContent = "Validando...";
-
+    setLoading?.(true);
     try {
       const form = new FormData();
       form.append("codigo", codigo);
@@ -777,23 +729,45 @@
       const { data } = await postForm("{% url 'vincular_adulto_por_codigo' %}", form);
 
       if (!data.ok) {
-        codigoError.textContent = data.error || "Código inválido.";
-        codigoError.classList.remove("hidden");
-        return;
+        onError?.(data.error || "Código inválido.");
+        return false;
       }
 
       renderAdultoActual(data.adulto?.nombre || "");
-      renderListaAdultos(data.adultos || []);
-      await cargarAlarmasServidor();
-      renderTablaCalendario();
-      setBloqueo(false);
 
+      // si existe el botón + (cuando no lo ocultaste desde template) lo escondemos
+      if (btnAddAdulto) btnAddAdulto.classList.add("hidden");
+
+      // refrescar alarmas + tabla
+      if (typeof cargarAlarmasServidor === "function") await cargarAlarmasServidor();
+      if (typeof renderTablaCalendario === "function") renderTablaCalendario();
+
+      return true;
     } catch (e) {
-      codigoError.textContent = "Error de conexión. Intenta de nuevo.";
-      codigoError.classList.remove("hidden");
+      onError?.("Error de conexión. Intenta de nuevo.");
+      return false;
     } finally {
-      btnConfirmarCodigo.disabled = false;
-      btnConfirmarCodigo.textContent = "Confirmar";
+      setLoading?.(false);
+    }
+  }
+
+  // Overlay
+  async function vincularDesdeOverlay() {
+    codigoError.classList.add("hidden");
+    codigoError.textContent = "";
+
+    const ok = await vincularPorCodigo(
+      codigoInput?.value,
+      (msg) => { codigoError.textContent = msg; codigoError.classList.remove("hidden"); },
+      (loading) => {
+        btnConfirmarCodigo.disabled = loading;
+        btnConfirmarCodigo.textContent = loading ? "Validando..." : "Confirmar";
+      }
+    );
+
+    if (ok) {
+      codigoInput.value = "";
+      setBloqueo(false);
     }
   }
 
@@ -802,80 +776,30 @@
     if (e.key === "Enter") { e.preventDefault(); vincularDesdeOverlay(); }
   });
 
+  // Mini modal
   async function vincularDesdeMini() {
-    const codigo = (codigoMiniInput?.value || "").trim().toUpperCase();
     if (miniError) { miniError.classList.add("hidden"); miniError.textContent = ""; }
 
-    if (!codigo) {
-      if (miniError) { miniError.textContent = "Ingresa el código único."; miniError.classList.remove("hidden"); }
-      return;
-    }
-
-    btnVincularMini.disabled = true;
-    btnVincularMini.textContent = "Vinculando...";
-
-    try {
-      const form = new FormData();
-      form.append("codigo", codigo);
-
-      const { data } = await postForm("{% url 'vincular_adulto_por_codigo' %}", form);
-
-      if (!data.ok) {
-        if (miniError) { miniError.textContent = data.error || "Código inválido."; miniError.classList.remove("hidden"); }
-        return;
+    const ok = await vincularPorCodigo(
+      codigoMiniInput?.value,
+      (msg) => { miniError.textContent = msg; miniError.classList.remove("hidden"); },
+      (loading) => {
+        btnVincularMini.disabled = loading;
+        btnVincularMini.textContent = loading ? "Vinculando..." : "Vincular";
       }
+    );
 
-      renderAdultoActual(data.adulto?.nombre || "");
-      renderListaAdultos(data.adultos || []);
-      await cargarAlarmasServidor();
-      renderTablaCalendario();
-      closeMini();
-    } catch (e) {
-      if (miniError) { miniError.textContent = "Error de conexión. Intenta de nuevo."; miniError.classList.remove("hidden"); }
-    } finally {
-      btnVincularMini.disabled = false;
-      btnVincularMini.textContent = "Vincular";
-    }
-  }
-
-  async function cambiarAdultoActual(adultoId) {
-    try {
-      const form = new FormData();
-      form.append("adulto_id", adultoId);
-      const { data } = await postForm("{% url 'cambiar_adulto_actual' %}", form);
-      if (!data.ok) return;
-      renderAdultoActual(data.adulto?.nombre || "");
-      renderListaAdultos(data.adultos || []);
-      await cargarAlarmasServidor();
-      renderTablaCalendario();
-    } catch (e) {}
+    if (ok) closeMini();
   }
 
   btnAddAdulto?.addEventListener("click", (e) => { e.stopPropagation(); openMini(); });
   btnCerrarMini?.addEventListener("click", closeMini);
   miniModalAddAdulto?.addEventListener("click", (e) => { if (e.target === miniModalAddAdulto) closeMini(); });
 
-  toggleMiniCodigo?.addEventListener("click", () => {
-    if (!codigoMiniInput) return;
-    const estabaVisible = (codigoMiniInput.type === "text");
-    codigoMiniInput.type = estabaVisible ? "password" : "text";
-  });
-
   btnVincularMini?.addEventListener("click", vincularDesdeMini);
   codigoMiniInput?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); vincularDesdeMini(); }
   });
-
-  (function initAdultos() {
-    const el = document.getElementById("adultosIniciales");
-    if (!el) return;
-    try {
-      const adultos = JSON.parse(el.textContent || "[]");
-      renderListaAdultos(adultos);
-      const activo = Array.isArray(adultos) ? adultos.find(a => a.activo) : null;
-      if (activo && activo.nombre) renderAdultoActual(activo.nombre);
-    } catch (e) {}
-  })();
 </script>
 
 <script>
