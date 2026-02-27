@@ -1388,6 +1388,7 @@ def registrar_orden_openai(request):
         if hora:
             try:
                 Alarma.objects.create(
+                    usuario=request.user,
                     fecha=None,   # se asume hoy; si luego quieres fecha, la añadimos desde meta
                     hora=hora,
                     mensaje=mensaje,

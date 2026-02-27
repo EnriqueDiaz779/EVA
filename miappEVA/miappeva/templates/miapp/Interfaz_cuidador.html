@@ -33,60 +33,6 @@
 
     <div class="flex items-center gap-3 md:gap-4 relative">
 
-      <!-- Historial -->
-      <div class="relative">
-        <button
-          type="button"
-          id="btnHistorial"
-          class="flex items-center justify-center gap-2
-                 bg-yellow-400 hover:bg-yellow-500
-                 text-blue-950 font-extrabold
-                 px-3 py-1 rounded-lg shadow
-                 text-lg transition
-                 hover:scale-105 active:scale-95
-                 focus:outline-none focus:ring-2 focus:ring-yellow-200"
-        >
-          <span class="text-2xl">📜</span>
-          <span class="hidden sm:inline">Historial</span>
-        </button>
-
-        <!-- MODAL HISTORIAL -->
-        <div
-          id="modalHistorial"
-          class="hidden absolute left-1/2 -translate-x-1/2 top-[3.25rem]
-                 w-72 md:w-80 bg-white text-gray-900
-                 rounded-2xl shadow-2xl border border-gray-200
-                 overflow-hidden z-50"
-        >
-          <div class="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white rotate-45 border-l border-t border-gray-200"></div>
-
-          <div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-            <span class="text-xl">📜</span>
-            <p class="font-extrabold text-sm tracking-wide">Historial</p>
-          </div>
-
-          <div class="p-5">
-            {% if meds_adulto %}
-              <div class="space-y-3 max-h-64 overflow-auto pr-1">
-                {% for m in meds_adulto %}
-                  <div class="p-3 rounded-xl border border-gray-200 bg-gray-50">
-                    <p class="font-extrabold text-gray-900">{{ m.nombre_detectado }}</p>
-                    <p class="text-sm text-gray-600">{{ m.descripcion }}</p>
-                    <p class="text-xs text-gray-400 mt-1">Confianza: {{ m.confianza }}</p>
-                  </div>
-                {% endfor %}
-              </div>
-            {% else %}
-              <div class="h-40 flex flex-col items-center justify-center text-center gap-2">
-                <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-2xl">🗂️</div>
-                <p class="font-extrabold text-gray-800">Aún no hay historial</p>
-                <p class="text-sm text-gray-500">Aquí aparecerán el historial de los medicamentos.</p>
-              </div>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-
       <!-- PERFIL -->
       <div class="relative">
         <button
@@ -460,7 +406,7 @@
                    class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200" />
           </div>
           <div>
-            <label class="text-sm font-bold text-gray-700">Fecha (opcional):</label>
+            <label class="text-sm font-bold text-gray-700">Fecha:</label>
             <input id="alarmaFechaModal"
                    type="date"
                    class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-200" />
@@ -604,8 +550,6 @@
 
 <script>
   // ===== Referencias UI (header + perfil + bloqueo) =====
-  const btnHistorial = document.getElementById("btnHistorial");
-  const modalHistorial = document.getElementById("modalHistorial");
   const btnPerfil = document.getElementById("btnPerfil");
   const panelPerfil = document.getElementById("panelPerfil");
   const appWrap = document.getElementById("appWrap");
@@ -644,17 +588,8 @@
   if (overlayVinculo && !overlayVinculo.classList.contains("hidden")) setBloqueo(true);
 
   function cerrarTodos() {
-    modalHistorial?.classList.add("hidden");
     panelPerfil?.classList.add("hidden");
   }
-
-  btnHistorial?.addEventListener("click", (e) => {
-    if (overlayVinculo && !overlayVinculo.classList.contains("hidden")) return;
-    e.stopPropagation();
-    const estabaAbierto = !modalHistorial.classList.contains("hidden");
-    cerrarTodos();
-    if (!estabaAbierto) modalHistorial.classList.remove("hidden");
-  });
 
   btnPerfil?.addEventListener("click", (e) => {
     if (overlayVinculo && !overlayVinculo.classList.contains("hidden")) return;
@@ -664,7 +599,6 @@
     if (!estabaAbierto) panelPerfil.classList.remove("hidden");
   });
 
-  modalHistorial?.addEventListener("click", (e) => e.stopPropagation());
   panelPerfil?.addEventListener("click", (e) => e.stopPropagation());
 
   document.addEventListener("click", () => {
@@ -1616,7 +1550,7 @@ function cerrarMenuAgregar() {
     } catch (_) {}
   }
 
-  const SOS_AUDIO_URL = "{% static 'miapp/sonidos/alarmita.mp3' %}?v=20260212b";
+  const SOS_AUDIO_URL = "{% static 'miapp/sonidos/Alarma_Emergencia.mp3' %}?v=20260227a";
 
   function ensureAudio() {
     if (audioSOS) return audioSOS;
