@@ -1464,9 +1464,18 @@ def pendientes(request):
             continue
 
         base_dt = timezone.make_aware(
-            datetime.combine(ahora.date(), a.hora),
-            timezone.get_current_timezone(),
-        )
+    datetime.combine(ahora.date(), a.hora),
+    timezone.get_current_timezone(),
+)
+
+# ✅ SOLO después de la hora (nunca antes)
+        delta = (ahora - base_dt).total_seconds()
+        if delta < 0 or delta > 40:
+            continue
+
+        # ✅ evita duplicados más fuertes
+        if a.disparada_at and (ahora - a.disparada_at).total_seconds() < 300:
+            continue
         # Margen mayor al polling para no perder la alarma por desfase de segundos.
         if abs((base_dt - ahora).total_seconds()) > 75:
             continue
