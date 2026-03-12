@@ -2,6 +2,23 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.conf import settings
 
+from django.db import models
+from django.contrib.auth.models import User
+
+class PerfilUsuario(models.Model):
+    TIPO_CHOICES = [
+        ('adulto', 'Adulto'),
+        ('cuidador', 'Cuidador'),
+        ('admin', 'Administrador'),
+    ]
+
+    usuario = models.OneToOneField(User, on_delete=models.CASCADE, related_name='perfil')
+    tipo_cuenta = models.CharField(max_length=20, choices=TIPO_CHOICES, default='adulto')
+
+    def __str__(self):
+        return f"{self.usuario.username} - {self.tipo_cuenta}"
+
+
 class OrdenVoz(models.Model):
     usuario = models.ForeignKey(User, on_delete=models.CASCADE)
     texto = models.TextField()

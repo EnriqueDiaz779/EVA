@@ -1,0 +1,986 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administrador | EVA</title>
+    <link rel="icon" type="image/png" href="{% static 'miapp/img/eva.png' %}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-[#d9d9d9] min-h-screen flex flex-col overflow-x-hidden">
+
+    <!-- Barra superior -->
+    <header class="w-full bg-[#1f3f97] min-h-[64px] flex items-center justify-between px-3 sm:px-4 md:px-6 py-2 shadow-sm relative z-30">
+        <div class="flex items-center gap-3">
+            <img
+                src="{% static 'miapp/img/eva.jpg' %}"
+                alt="Logo EVA"
+                class="w-11 h-11 rounded-full object-cover bg-white border border-gray-200"
+            >
+            <span class="text-white font-extrabold text-[18px] sm:text-[20px] tracking-wide">EVA</span>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <span class="text-white font-extrabold text-sm uppercase tracking-wide hidden sm:block">
+                Administrador
+            </span>
+
+            <div class="relative">
+                <button
+                    id="btnUsuario"
+                    type="button"
+                    class="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow hover:scale-105 transition"
+                >
+                    <span class="text-[18px]">👤</span>
+                </button>
+
+                <!-- Mini modal usuario -->
+                <div
+                    id="menuUsuario"
+                    class="hidden absolute right-0 mt-3 w-44 bg-white rounded-xl shadow-xl border border-gray-200 p-3"
+                >
+                    <div class="text-center text-[#1f3f97] font-extrabold text-sm uppercase mb-3">
+                    </div>
+
+                    <form method="post" action="{% url 'logout' %}">
+                        {% csrf_token %}
+                        <button
+                            type="submit"
+                            class="w-full bg-red-500 hover:bg-red-600 text-white font-semibold text-sm py-2 rounded-lg transition"
+                        >
+                            Cerrar sesión
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Contenido -->
+    <main class="flex-1 px-3 sm:px-4 md:px-6 lg:px-8 py-4 md:py-6">
+        <div class="max-w-7xl mx-auto w-full">
+            <h1 class="text-center text-black font-extrabold text-lg md:text-2xl uppercase tracking-wide mb-6">
+            </h1>
+
+            <!-- Mensajes Django -->
+            {% if messages %}
+                <div class="mb-5 space-y-3">
+                    {% for message in messages %}
+                        <div class="rounded-xl px-4 py-3 text-sm font-medium shadow
+                            {% if message.tags == 'success' %} bg-green-100 text-green-800
+                            {% elif message.tags == 'warning' %} bg-yellow-100 text-yellow-800
+                            {% elif message.tags == 'error' %} bg-red-100 text-red-800
+                            {% else %} bg-blue-100 text-blue-800 {% endif %}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <!-- Tarjeta principal -->
+            <section class="bg-white rounded-[22px] md:rounded-[28px] shadow-lg border border-gray-200 overflow-hidden">
+                <div class="px-4 md:px-6 py-5 border-b border-gray-200 bg-[#f8f9fc]">
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                        <div>
+                            <h2 class="text-[#1f3f97] font-extrabold text-lg">GESTIÓN DE USUARIOS</h2>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <div class="bg-[#1f3f97]/10 text-[#1f3f97] font-semibold text-sm px-4 py-2 rounded-full">
+                                Total: {{ usuarios|length }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {% if usuarios %}
+                <!-- Botón desplegable -->
+                <div class="px-4 md:px-6 py-4 bg-white border-b border-gray-100">
+                    <button
+                        id="toggleUsuarios"
+                        type="button"
+                        class="w-full md:w-auto inline-flex items-center justify-center gap-2 bg-[#1f3f97] hover:bg-[#19357f] text-white font-bold px-5 py-3 rounded-full shadow transition"
+                    >
+                        <span id="textoToggle">Ver todos los usuarios</span>
+                        <span id="iconoToggle" class="text-lg leading-none">▾</span>
+                    </button>
+                </div>
+                {% endif %}
+
+                <div class="w-full overflow-x-auto">
+                    <table class="w-full min-w-[920px] lg:min-w-full">
+                        <thead class="bg-[#1f3f97] text-white">
+                            <tr class="text-center text-sm md:text-base">
+                                <th class="px-6 py-4 font-bold">Nombre</th>
+                                <th class="px-6 py-4 font-bold">Usuario</th>
+                                <th class="px-6 py-4 font-bold">Tipo de cuenta</th>
+                                <th class="px-6 py-4 font-bold">Estado</th>
+                                <th class="px-6 py-4 font-bold">Fecha de registro</th>
+                                <th class="px-6 py-4 font-bold">Acciones</th>
+                            </tr>
+                        </thead>
+
+                        <tbody class="divide-y divide-gray-200 bg-white">
+                            {% for usuario in usuarios|slice:":1" %}
+                            <tr class="text-center hover:bg-[#f5f8ff] transition">
+                                <td class="px-6 py-4 font-semibold text-gray-800">
+                                    {{ usuario.nombre }}
+                                </td>
+
+                                <td class="px-6 py-4 text-gray-700">
+                                    Usuario {{ usuario.id }}
+                                </td>
+
+                                <td class="px-6 py-4">
+                                    <div class="flex justify-center">
+                                        {% if usuario.tipo == 'adulto' %}
+                                            <span class="inline-flex items-center justify-center min-w-[140px] px-4 py-2 rounded-full bg-orange-100 text-orange-700 border border-orange-200 font-bold text-sm shadow-sm">
+                                                Adulto
+                                            </span>
+                                        {% elif usuario.tipo == 'cuidador' %}
+                                            <span class="inline-flex items-center justify-center min-w-[140px] px-4 py-2 rounded-full bg-blue-100 text-blue-700 border border-blue-200 font-bold text-sm shadow-sm">
+                                                Cuidador
+                                            </span>
+                                        {% elif usuario.tipo == 'admin' %}
+                                            <span class="inline-flex items-center justify-center min-w-[140px] px-4 py-2 rounded-full bg-purple-100 text-purple-700 border border-purple-200 font-bold text-sm shadow-sm">
+                                                Administrador
+                                            </span>
+                                        {% else %}
+                                            <span class="inline-flex items-center justify-center min-w-[140px] px-4 py-2 rounded-full bg-gray-100 text-gray-600 border border-gray-200 font-bold text-sm shadow-sm">
+                                                Sin definir
+                                            </span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+
+                                <td class="px-6 py-4">
+                                    {% if usuario.activo %}
+                                        <span class="inline-block bg-green-100 text-green-700 font-bold px-4 py-2 rounded-full text-sm">
+                                            Activo
+                                        </span>
+                                    {% else %}
+                                        <span class="inline-block bg-red-100 text-red-700 font-bold px-4 py-2 rounded-full text-sm">
+                                            Inactivo
+                                        </span>
+                                    {% endif %}
+                                </td>
+
+                                <td class="px-6 py-4 text-gray-700">
+                                    {{ usuario.fecha_registro|date:"d/m/Y" }}
+                                </td>
+
+                                <td class="px-6 py-4">
+    <div class="flex flex-wrap justify-center gap-2">
+
+        <form method="post" action="{% url 'cambiar_estado_usuario' usuario.id %}">
+            {% csrf_token %}
+            <button
+                type="submit"
+                class="{% if usuario.activo %}bg-yellow-400 hover:bg-yellow-500{% else %}bg-green-500 hover:bg-green-600{% endif %} text-white font-bold px-4 py-2 rounded-full text-sm shadow transition"
+            >
+                {% if usuario.activo %}Desactivar{% else %}Activar{% endif %}
+            </button>
+        </form>
+
+        <form method="post" action="{% url 'restablecer_password_usuario' usuario.id %}">
+            {% csrf_token %}
+            <button
+                type="submit"
+                class="bg-blue-500 hover:bg-blue-600 text-white font-bold px-4 py-2 rounded-full text-sm shadow transition"
+            >
+                Restablecer
+            </button>
+        </form>
+
+        {% if not usuario.activo %}
+        <form method="post" action="{% url 'eliminar_usuario_inactivo' usuario.id %}" onsubmit="return confirm('¿Seguro que deseas eliminar esta cuenta inactiva?');">
+            {% csrf_token %}
+            <button
+                type="submit"
+                class="bg-red-500 hover:bg-red-600 text-white font-bold px-4 py-2 rounded-full text-sm shadow transition"
+            >
+                Eliminar
+            </button>
+        </form>
+        {% endif %}
+
+    </div>
+</td>
+                            </tr>
+                            {% endfor %}
+
+                            {% for usuario in usuarios|slice:"1:" %}
+                            <tr class="fila-extra hidden text-center hover:bg-[#f5f8ff] transition">
+                                <td class="px-6 py-4 font-semibold text-gray-800">
+                                    {{ usuario.nombre }}
+                                </td>
+
+                                <td class="px-6 py-4 text-gray-700">
+                                    Usuario {{ usuario.id }}
+                                </td>
+
+                                <td class="px-6 py-4">
+                                    <div class="flex justify-center">
+                                        {% if usuario.tipo == 'adulto' %}
+                                            <span class="inline-flex items-center justify-center min-w-[140px] px-4 py-2 rounded-full bg-orange-100 text-orange-700 border border-orange-200 font-bold text-sm shadow-sm">
+                                                Adulto
+                                            </span>
+                                        {% elif usuario.tipo == 'cuidador' %}
+                                            <span class="inline-flex items-center justify-center min-w-[140px] px-4 py-2 rounded-full bg-blue-100 text-blue-700 border border-blue-200 font-bold text-sm shadow-sm">
+                                                Cuidador
+                                            </span>
+                                        {% elif usuario.tipo == 'admin' %}
+                                            <span class="inline-flex items-center justify-center min-w-[140px] px-4 py-2 rounded-full bg-purple-100 text-purple-700 border border-purple-200 font-bold text-sm shadow-sm">
+                                                Administrador
+                                            </span>
+                                        {% else %}
+                                            <span class="inline-flex items-center justify-center min-w-[140px] px-4 py-2 rounded-full bg-gray-100 text-gray-600 border border-gray-200 font-bold text-sm shadow-sm">
+                                                Sin definir
+                                            </span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+
+                                <td class="px-6 py-4">
+                                    {% if usuario.activo %}
+                                        <span class="inline-block bg-green-100 text-green-700 font-bold px-4 py-2 rounded-full text-sm">
+                                            Activo
+                                        </span>
+                                    {% else %}
+                                        <span class="inline-block bg-red-100 text-red-700 font-bold px-4 py-2 rounded-full text-sm">
+                                            Inactivo
+                                        </span>
+                                    {% endif %}
+                                </td>
+
+                                <td class="px-6 py-4 text-gray-700">
+                                    {{ usuario.fecha_registro|date:"d/m/Y" }}
+                                </td>
+
+                                <td class="px-6 py-4">
+                                    <div class="flex flex-wrap justify-center gap-2">
+                                        <a
+                                            href="{% url 'cambiar_estado_usuario' usuario.id %}"
+                                            class="{% if usuario.activo %}bg-yellow-400 hover:bg-yellow-500{% else %}bg-green-500 hover:bg-green-600{% endif %} text-white font-bold px-4 py-2 rounded-full text-sm shadow transition"
+                                        >
+                                            {% if usuario.activo %}Desactivar{% else %}Activar{% endif %}
+                                        </a>
+
+                                        <a
+                                            href="{% url 'restablecer_password_usuario' usuario.id %}"
+                                            class="bg-blue-500 hover:bg-blue-600 text-white font-bold px-4 py-2 rounded-full text-sm shadow transition"
+                                        >
+                                            Restablecer
+                                        </a>
+
+                                        {% if not usuario.activo %}
+                                        <a
+                                            href="{% url 'eliminar_usuario_inactivo' usuario.id %}"
+                                            class="bg-red-500 hover:bg-red-600 text-white font-bold px-4 py-2 rounded-full text-sm shadow transition"
+                                            onclick="return confirm('¿Seguro que deseas eliminar esta cuenta inactiva?');"
+                                        >
+                                            Eliminar
+                                        </a>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+
+                            {% if not usuarios %}
+                            <tr>
+                                <td colspan="6" class="py-10 text-center text-gray-500 font-semibold">
+                                    No hay usuarios registrados.
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- BLOQUE: vínculos + monitoreo -->
+                <div class="mt-6 space-y-4">
+
+    <!-- Tarjeta desplegable de vínculos -->
+    <section class="bg-white rounded-[22px] md:rounded-[28px] shadow-lg border border-gray-200 overflow-hidden">
+        <button
+            id="toggleVinculos"
+            type="button"
+            class="w-full text-left px-4 sm:px-5 md:px-6 py-5 bg-[#f8f9fc] hover:bg-[#eef2ff] transition border-b border-gray-200"
+        >
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div class="min-w-0">
+                    <h2 class="text-[#1f3f97] font-extrabold text-base sm:text-lg md:text-xl leading-tight">
+                        RELACIONES DE ADULTO - CUIDADOR
+                    </h2>
+                    <p class="text-[11px] sm:text-xs md:text-sm text-gray-500 mt-1 leading-relaxed">
+                        Resumen de vínculos entre adultos mayores y cuidadores registrados en EVA
+                    </p>
+                </div>
+
+                <div class="flex items-center gap-3 shrink-0">
+                    <div class="bg-[#1f3f97]/10 text-[#1f3f97] font-semibold text-xs sm:text-sm px-4 py-2 rounded-full">
+                        Sin vínculo: {{ adultos_sin_vinculo }}
+                    </div>
+                    <span id="iconoVinculos" class="text-[#1f3f97] font-extrabold text-xl leading-none">▾</span>
+                </div>
+            </div>
+        </button>
+
+        <div id="contenidoVinculos" class="hidden bg-white">
+            <div class="px-4 sm:px-5 md:px-6 py-5">
+                {% if relaciones_cuidado %}
+                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        {% for relacion in relaciones_cuidado %}
+                            <div class="bg-[#f8f9fc] border border-gray-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition">
+                                <div class="space-y-2">
+                                    <div>
+                                        <p class="text-[11px] uppercase tracking-wide text-gray-400 font-bold">
+                                            Adulto mayor
+                                        </p>
+                                        <p class="text-sm md:text-base font-extrabold text-[#1f3f97] break-words">
+                                            {{ relacion.adulto_nombre }}
+                                        </p>
+                                    </div>
+
+                                    <div class="h-px bg-gray-200"></div>
+
+                                    <div>
+                                        <p class="text-[11px] uppercase tracking-wide text-gray-400 font-bold">
+                                            Cuidador
+                                        </p>
+                                        <p class="text-sm md:text-base font-semibold text-gray-700 break-words">
+                                            {{ relacion.cuidador_nombre }}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-5 text-sm text-gray-500 text-center">
+                        No hay vínculos registrados.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <!-- Botón monitoreo -->
+    <div class="flex justify-start">
+        <button
+            id="abrirMonitoreo"
+            type="button"
+            class="w-full sm:w-auto bg-[#1f3f97] hover:bg-[#19357f] text-white font-extrabold px-6 md:px-8 py-3 md:py-4 rounded-full shadow-lg transition text-sm md:text-base"
+        >
+            Monitoreo del sistema
+        </button>
+    </div>
+</div>
+        </div>
+    </main>
+
+    <!-- Modal monitoreo -->
+    <div
+    id="modalMonitoreo"
+    class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-[1px] px-2 sm:px-4 py-4 md:py-8 overflow-y-auto"
+    >
+        <div class="max-w-6xl mx-auto">
+            <div class="bg-white rounded-[22px] md:rounded-[30px] shadow-2xl border border-gray-200 overflow-hidden">
+                <!-- Encabezado modal -->
+                <div class="bg-[#1f3f97] px-4 sm:px-6 md:px-8 py-4 md:py-5 flex items-start sm:items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-white font-extrabold text-xl md:text-2xl uppercase tracking-wide">
+                            Monitoreo del sistema
+                        </h2>
+                        <p class="text-white/80 text-sm mt-1">
+                            Revisión general de los módulos principales de EVA
+                        </p>
+                    </div>
+
+                    <button
+                        id="cerrarMonitoreo"
+                        type="button"
+                        class="w-11 h-11 rounded-full bg-white text-[#1f3f97] font-extrabold text-xl hover:scale-105 transition"
+                    >
+                        ×
+                    </button>
+                </div>
+
+                <!-- Contenido modal -->
+                <div class="p-4 sm:p-5 md:p-8 bg-[#f8f9fc]">
+                    <!-- Resumen general -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+                        <div class="bg-white rounded-2xl shadow border border-gray-200 p-5">
+                            <p class="text-gray-500 text-sm font-semibold">Estado general</p>
+                            <h3 id="mg-estado-general" class="mt-2 text-xl font-extrabold text-green-600">Cargando...</h3>
+                            <p id="mg-estado-general-detalle" class="text-xs text-gray-400 mt-1">Consultando sistema...</p>
+                        </div>
+
+                        <div class="bg-white rounded-2xl shadow border border-gray-200 p-5">
+                            <p class="text-gray-500 text-sm font-semibold">Reconocimiento de voz</p>
+                            <h3 id="mg-voz-estado" class="mt-2 text-xl font-extrabold text-green-600">Cargando...</h3>
+                            <p id="mg-voz-detalle" class="text-xs text-gray-400 mt-1">Consultando módulo...</p>
+                        </div>
+
+                        <div class="bg-white rounded-2xl shadow border border-gray-200 p-5">
+                            <p class="text-gray-500 text-sm font-semibold">Escáner de medicamentos</p>
+                            <h3 id="mg-scanner-estado" class="mt-2 text-xl font-extrabold text-yellow-500">Cargando...</h3>
+                            <p id="mg-scanner-detalle" class="text-xs text-gray-400 mt-1">Consultando módulo...</p>
+                        </div>
+
+                        <div class="bg-white rounded-2xl shadow border border-gray-200 p-5">
+                            <p class="text-gray-500 text-sm font-semibold">Sistema de alarmas</p>
+                            <h3 id="mg-alarmas-estado" class="mt-2 text-xl font-extrabold text-green-600">Cargando...</h3>
+                            <p id="mg-alarmas-detalle" class="text-xs text-gray-400 mt-1">Consultando módulo...</p>
+                        </div>
+                    </div>
+
+                    <!-- Gráficas del monitoreo -->
+                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-8">
+                        <div class="bg-white rounded-3xl shadow border border-gray-200 p-6">
+                            <div class="mb-4">
+                                <h3 class="text-[#1f3f97] font-extrabold text-lg">Estado de módulos</h3>
+                                <p class="text-sm text-gray-500 mt-1">
+                                    Distribución de módulos activos, advertencias y errores del sistema.
+                                </p>
+                            </div>
+                            <div class="relative h-[360px]">
+                                <canvas id="graficaModulos"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-3xl shadow border border-gray-200 p-6">
+                            <div class="mb-4">
+                                <h3 class="text-[#1f3f97] font-extrabold text-lg">Actividad del sistema</h3>
+                                <p class="text-sm text-gray-500 mt-1">
+                                    Actividad reciente de voz, escáner, alarmas y notificaciones push.
+                                </p>
+                            </div>
+                            <div class="relative h-[320px]">
+                                <canvas id="graficaActividad"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tarjetas de monitoreo -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
+                        <div class="bg-white rounded-3xl shadow border border-gray-200 p-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-[#1f3f97] font-extrabold text-lg">Estado del sistema</h3>
+                                <span id="badge-sistema" class="bg-green-100 text-green-700 font-bold text-xs px-3 py-1 rounded-full">
+                                    Activo
+                                </span>
+                            </div>
+                            <p id="detalle-sistema" class="text-gray-600 text-sm leading-relaxed">
+                                Cargando información del sistema...
+                            </p>
+                        </div>
+
+                        <div class="bg-white rounded-3xl shadow border border-gray-200 p-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-[#1f3f97] font-extrabold text-lg">Reconocimiento de voz</h3>
+                                <span id="badge-voz" class="bg-green-100 text-green-700 font-bold text-xs px-3 py-1 rounded-full">
+                                    Disponible
+                                </span>
+                            </div>
+                            <p id="detalle-voz" class="text-gray-600 text-sm leading-relaxed">
+                                Cargando información del módulo...
+                            </p>
+                        </div>
+
+                        <div class="bg-white rounded-3xl shadow border border-gray-200 p-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-[#1f3f97] font-extrabold text-lg">Escáner de medicamentos</h3>
+                                <span id="badge-scanner" class="bg-yellow-100 text-yellow-700 font-bold text-xs px-3 py-1 rounded-full">
+                                    Advertencia
+                                </span>
+                            </div>
+                            <p id="detalle-scanner" class="text-gray-600 text-sm leading-relaxed">
+                                Cargando información del módulo...
+                            </p>
+                        </div>
+
+                        <div class="bg-white rounded-3xl shadow border border-gray-200 p-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-[#1f3f97] font-extrabold text-lg">Sistema de alarmas</h3>
+                                <span id="badge-alarmas" class="bg-green-100 text-green-700 font-bold text-xs px-3 py-1 rounded-full">
+                                    Estable
+                                </span>
+                            </div>
+                            <p id="detalle-alarmas" class="text-gray-600 text-sm leading-relaxed">
+                                Cargando información del módulo...
+                            </p>
+                        </div>
+
+                        <div class="bg-white rounded-3xl shadow border border-gray-200 p-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-[#1f3f97] font-extrabold text-lg">Base de datos</h3>
+                                <span id="badge-db" class="bg-green-100 text-green-700 font-bold text-xs px-3 py-1 rounded-full">
+                                    Conectada
+                                </span>
+                            </div>
+                            <p id="detalle-db" class="text-gray-600 text-sm leading-relaxed">
+                                Cargando información de la base de datos...
+                            </p>
+                        </div>
+
+                        <div class="bg-white rounded-3xl shadow border border-gray-200 p-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-[#1f3f97] font-extrabold text-lg">Notificaciones push</h3>
+                                <span id="badge-push" class="bg-blue-100 text-blue-700 font-bold text-xs px-3 py-1 rounded-full">
+                                    Supervisado
+                                </span>
+                            </div>
+                            <p id="detalle-push" class="text-gray-600 text-sm leading-relaxed">
+                                Cargando información del sistema push...
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Registro técnico -->
+                    <div class="bg-white rounded-3xl shadow border border-gray-200 overflow-hidden">
+                        <div class="bg-[#eef2ff] px-6 py-4 border-b border-gray-200">
+                            <h3 class="text-[#1f3f97] font-extrabold text-lg">Registro de errores del sistema</h3>
+                            <p class="text-sm text-gray-500 mt-1">
+                                Solo muestra información técnica. 
+                            </p>
+                        </div>
+
+                        <div class="overflow-x-auto">
+                            <table class="w-full min-w-[760px]">
+                                <thead class="bg-[#1f3f97] text-white">
+                                    <tr class="text-center text-sm">
+                                        <th class="px-4 py-3 font-bold">Fecha</th>
+                                        <th class="px-4 py-3 font-bold">Módulo</th>
+                                        <th class="px-4 py-3 font-bold">Nivel</th>
+                                        <th class="px-4 py-3 font-bold">Descripción</th>
+                                        <th class="px-4 py-3 font-bold">Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tablaErroresMonitoreo" class="divide-y divide-gray-200 text-sm bg-white">
+                                    <tr class="text-center">
+                                        <td class="px-4 py-4 text-gray-700">08/03/2026</td>
+                                        <td class="px-4 py-4 font-semibold text-gray-800">Escáner</td>
+                                        <td class="px-4 py-4">
+                                            <span class="bg-yellow-100 text-yellow-700 font-bold px-3 py-1 rounded-full text-xs">
+                                                Advertencia
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-4 text-gray-700">Se detectó una captura pendiente de análisis.</td>
+                                        <td class="px-4 py-4 text-gray-600">En revisión</td>
+                                    </tr>
+
+                                    <tr class="text-center">
+                                        <td class="px-4 py-4 text-gray-700">08/03/2026</td>
+                                        <td class="px-4 py-4 font-semibold text-gray-800">Alarmas</td>
+                                        <td class="px-4 py-4">
+                                            <span class="bg-green-100 text-green-700 font-bold px-3 py-1 rounded-full text-xs">
+                                                Informativo
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-4 text-gray-700">El módulo respondió correctamente a la última verificación.</td>
+                                        <td class="px-4 py-4 text-gray-600">Correcto</td>
+                                    </tr>
+
+                                    <tr class="text-center">
+                                        <td class="px-4 py-4 text-gray-700">08/03/2026</td>
+                                        <td class="px-4 py-4 font-semibold text-gray-800">Base de datos</td>
+                                        <td class="px-4 py-4">
+                                            <span class="bg-green-100 text-green-700 font-bold px-3 py-1 rounded-full text-xs">
+                                                Informativo
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-4 text-gray-700">Conexión activa con la base de datos del sistema EVA.</td>
+                                        <td class="px-4 py-4 text-gray-600">Correcto</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 flex justify-end">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Barra inferior -->
+    <footer class="w-full h-[30px] bg-[#1f3f97] mt-auto"></footer>
+
+    <script>
+    const btnUsuario = document.getElementById("btnUsuario");
+    const menuUsuario = document.getElementById("menuUsuario");
+
+    btnUsuario.addEventListener("click", function (e) {
+        e.stopPropagation();
+        menuUsuario.classList.toggle("hidden");
+    });
+
+    document.addEventListener("click", function (e) {
+        if (!menuUsuario.contains(e.target) && !btnUsuario.contains(e.target)) {
+            menuUsuario.classList.add("hidden");
+        }
+    });
+
+    const toggleUsuarios = document.getElementById("toggleUsuarios");
+    const filasExtra = document.querySelectorAll(".fila-extra");
+    const textoToggle = document.getElementById("textoToggle");
+    const iconoToggle = document.getElementById("iconoToggle");
+
+    if (toggleUsuarios) {
+        let abierto = false;
+
+        toggleUsuarios.addEventListener("click", function () {
+            abierto = !abierto;
+
+            filasExtra.forEach(fila => {
+                fila.classList.toggle("hidden", !abierto);
+            });
+
+            textoToggle.textContent = abierto ? "Ocultar usuarios" : "Ver todos los usuarios";
+            iconoToggle.textContent = abierto ? "▴" : "▾";
+        });
+    }
+
+    const toggleVinculos = document.getElementById("toggleVinculos");
+    const contenidoVinculos = document.getElementById("contenidoVinculos");
+    const iconoVinculos = document.getElementById("iconoVinculos");
+
+    if (toggleVinculos) {
+        let vinculosAbierto = false;
+
+        toggleVinculos.addEventListener("click", function () {
+            vinculosAbierto = !vinculosAbierto;
+            contenidoVinculos.classList.toggle("hidden", !vinculosAbierto);
+            iconoVinculos.textContent = vinculosAbierto ? "▴" : "▾";
+        });
+    }
+
+    const abrirMonitoreo = document.getElementById("abrirMonitoreo");
+    const modalMonitoreo = document.getElementById("modalMonitoreo");
+    const cerrarMonitoreo = document.getElementById("cerrarMonitoreo");
+
+    let chartModulos = null;
+    let chartActividad = null;
+
+    function claseTextoEstado(estado) {
+        if (estado === "activo") return "text-green-600";
+        if (estado === "advertencia") return "text-yellow-500";
+        return "text-red-600";
+    }
+
+    function claseBadgeEstado(estado) {
+        if (estado === "activo") return "bg-green-100 text-green-700";
+        if (estado === "advertencia") return "bg-yellow-100 text-yellow-700";
+        return "bg-red-100 text-red-700";
+    }
+
+    function labelEstado(estado) {
+        if (estado === "activo") return "Activo";
+        if (estado === "advertencia") return "Advertencia";
+        return "Error";
+    }
+
+    function aplicarTextoEstado(id, estado, texto) {
+        const el = document.getElementById(id);
+        if (!el) return;
+
+        el.textContent = texto;
+        el.classList.remove("text-green-600", "text-yellow-500", "text-red-600");
+        el.classList.add(claseTextoEstado(estado));
+    }
+
+    function aplicarBadge(id, estado, texto) {
+        const el = document.getElementById(id);
+        if (!el) return;
+
+        el.textContent = texto || labelEstado(estado);
+        el.classList.remove(
+            "bg-green-100", "text-green-700",
+            "bg-yellow-100", "text-yellow-700",
+            "bg-red-100", "text-red-700",
+            "bg-blue-100", "text-blue-700"
+        );
+
+        const clases = claseBadgeEstado(estado).split(" ");
+        clases.forEach(c => el.classList.add(c));
+    }
+
+    function construirDetalleVoz(data) {
+        return `${data.detalle} Total últimas 24h: ${data.total_24h ?? 0}. No entendidos: ${data.no_entendidos ?? 0}. Fuera de tema: ${data.fuera_de_tema ?? 0}.`;
+    }
+
+    function construirDetalleScanner(data) {
+        return `${data.detalle} Capturas 24h: ${data.capturas_24h ?? 0}. Analizadas: ${data.analizadas_24h ?? 0}. Reconocidos: ${data.reconocidos_24h ?? 0}.`;
+    }
+
+    function construirDetalleAlarmas(data) {
+        return `${data.detalle} Activas: ${data.activas ?? 0}. Entregadas: ${data.entregadas ?? 0}. Disparadas 24h: ${data.disparadas_24h ?? 0}.`;
+    }
+
+    function construirDetallePush(data) {
+        return `${data.detalle} Suscripciones activas: ${data.suscripciones ?? 0}.`;
+    }
+
+    function llenarTablaErrores(data) {
+        const tbody = document.getElementById("tablaErroresMonitoreo");
+        if (!tbody) return;
+
+        const servicios = [
+            { nombre: "Base de datos", key: "base_datos" },
+            { nombre: "IA / OpenAI", key: "openai" },
+            { nombre: "Reconocimiento de voz", key: "voz" },
+            { nombre: "Escáner", key: "scanner" },
+            { nombre: "Alarmas", key: "alarmas" },
+            { nombre: "Push", key: "push" },
+        ];
+
+        let filas = "";
+
+        servicios.forEach(item => {
+            const s = data.servicios[item.key];
+            if (!s) return;
+
+            const nivel = labelEstado(s.estado);
+            const clase = claseBadgeEstado(s.estado);
+
+            filas += `
+                <tr class="text-center">
+                    <td class="px-4 py-4 text-gray-700">${data.revision}</td>
+                    <td class="px-4 py-4 font-semibold text-gray-800">${item.nombre}</td>
+                    <td class="px-4 py-4">
+                        <span class="${clase} font-bold px-3 py-1 rounded-full text-xs">
+                            ${nivel}
+                        </span>
+                    </td>
+                    <td class="px-4 py-4 text-gray-700">${s.detalle}</td>
+                    <td class="px-4 py-4 text-gray-600">${nivel}</td>
+                </tr>
+            `;
+        });
+
+        tbody.innerHTML = filas || `
+            <tr>
+                <td colspan="5" class="px-4 py-6 text-center text-gray-500">
+                    No hay datos de monitoreo disponibles.
+                </td>
+            </tr>
+        `;
+    }
+
+    function destruirGraficas() {
+        if (chartModulos) {
+            chartModulos.destroy();
+            chartModulos = null;
+        }
+        if (chartActividad) {
+            chartActividad.destroy();
+            chartActividad = null;
+        }
+    }
+
+    function renderizarGraficas(data) {
+        destruirGraficas();
+
+        const canvasModulos = document.getElementById("graficaModulos");
+        const canvasActividad = document.getElementById("graficaActividad");
+
+        if (canvasModulos && data.graficas && data.graficas.modulos) {
+            chartModulos = new Chart(canvasModulos, {
+                type: "doughnut",
+                data: {
+                    labels: data.graficas.modulos.labels || [],
+                    datasets: [{
+                        data: data.graficas.modulos.values || [],
+                        backgroundColor: [
+                            "rgba(34, 197, 94, 0.85)",
+                            "rgba(234, 179, 8, 0.85)",
+                            "rgba(239, 68, 68, 0.85)"
+                        ],
+                        borderColor: [
+                            "rgba(34, 197, 94, 1)",
+                            "rgba(234, 179, 8, 1)",
+                            "rgba(239, 68, 68, 1)"
+                        ],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: "65%",
+                    plugins: {
+                        legend: {
+                            position: "bottom",
+                            labels: {
+                                boxWidth: 14,
+                                padding: 18,
+                                font: {
+                                    size: 12,
+                                    weight: "600"
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        if (canvasActividad && data.graficas && data.graficas.actividad) {
+            chartActividad = new Chart(canvasActividad, {
+                type: "bar",
+                data: {
+                    labels: data.graficas.actividad.labels || [],
+                    datasets: [{
+                        label: "Actividad",
+                        data: data.graficas.actividad.values || [],
+                        backgroundColor: [
+                            "rgba(31, 63, 151, 0.85)",
+                            "rgba(59, 130, 246, 0.85)",
+                            "rgba(16, 185, 129, 0.85)",
+                            "rgba(168, 85, 247, 0.85)"
+                        ],
+                        borderColor: [
+                            "rgba(31, 63, 151, 1)",
+                            "rgba(59, 130, 246, 1)",
+                            "rgba(16, 185, 129, 1)",
+                            "rgba(168, 85, 247, 1)"
+                        ],
+                        borderWidth: 2,
+                        borderRadius: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            },
+                            grid: {
+                                color: "rgba(0,0,0,0.06)"
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    async function cargarMonitoreoSistema() {
+        try {
+            const response = await fetch("{% url 'monitoreo_sistema' %}", {
+                headers: {
+                    "X-Requested-With": "XMLHttpRequest"
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error("No se pudo consultar el monitoreo del sistema.");
+            }
+
+            const data = await response.json();
+
+            if (!data.ok) {
+                throw new Error(data.error || "No se pudo obtener el monitoreo.");
+            }
+
+            aplicarTextoEstado("mg-estado-general", data.estado_general, data.estado_general_label);
+            document.getElementById("mg-estado-general-detalle").textContent = data.estado_general_detalle;
+
+            aplicarTextoEstado("mg-voz-estado", data.servicios.voz.estado, labelEstado(data.servicios.voz.estado));
+            document.getElementById("mg-voz-detalle").textContent = construirDetalleVoz(data.servicios.voz);
+
+            aplicarTextoEstado("mg-scanner-estado", data.servicios.scanner.estado, labelEstado(data.servicios.scanner.estado));
+            document.getElementById("mg-scanner-detalle").textContent = construirDetalleScanner(data.servicios.scanner);
+
+            aplicarTextoEstado("mg-alarmas-estado", data.servicios.alarmas.estado, labelEstado(data.servicios.alarmas.estado));
+            document.getElementById("mg-alarmas-detalle").textContent = construirDetalleAlarmas(data.servicios.alarmas);
+
+            aplicarBadge("badge-sistema", data.estado_general, data.estado_general_label);
+            document.getElementById("detalle-sistema").textContent =
+                `${data.estado_general_detalle} Última revisión: ${data.revision}. Servicios activos: ${data.total_activos}. Advertencias: ${data.total_advertencias}. Errores: ${data.total_errores}.`;
+
+            aplicarBadge("badge-voz", data.servicios.voz.estado, labelEstado(data.servicios.voz.estado));
+            document.getElementById("detalle-voz").textContent = construirDetalleVoz(data.servicios.voz);
+
+            aplicarBadge("badge-scanner", data.servicios.scanner.estado, labelEstado(data.servicios.scanner.estado));
+            document.getElementById("detalle-scanner").textContent = construirDetalleScanner(data.servicios.scanner);
+
+            aplicarBadge("badge-alarmas", data.servicios.alarmas.estado, labelEstado(data.servicios.alarmas.estado));
+            document.getElementById("detalle-alarmas").textContent = construirDetalleAlarmas(data.servicios.alarmas);
+
+            aplicarBadge("badge-db", data.servicios.base_datos.estado, labelEstado(data.servicios.base_datos.estado));
+            document.getElementById("detalle-db").textContent = data.servicios.base_datos.detalle;
+
+            aplicarBadge("badge-push", data.servicios.push.estado, labelEstado(data.servicios.push.estado));
+            document.getElementById("detalle-push").textContent = construirDetallePush(data.servicios.push);
+
+            llenarTablaErrores(data);
+            renderizarGraficas(data);
+
+        } catch (error) {
+            aplicarTextoEstado("mg-estado-general", "error", "Error");
+            document.getElementById("mg-estado-general-detalle").textContent = error.message;
+
+            const tabla = document.getElementById("tablaErroresMonitoreo");
+            if (tabla) {
+                tabla.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="px-4 py-6 text-center text-red-600 font-semibold">
+                            ${error.message}
+                        </td>
+                    </tr>
+                `;
+            }
+
+            destruirGraficas();
+        }
+    }
+
+    function cerrarModalMonitoreo() {
+        modalMonitoreo.classList.add("hidden");
+        document.body.classList.remove("overflow-hidden");
+    }
+
+    async function abrirModalMonitoreo() {
+        modalMonitoreo.classList.remove("hidden");
+        document.body.classList.add("overflow-hidden");
+        await cargarMonitoreoSistema();
+    }
+
+    abrirMonitoreo.addEventListener("click", abrirModalMonitoreo);
+    cerrarMonitoreo.addEventListener("click", cerrarModalMonitoreo);
+
+    modalMonitoreo.addEventListener("click", function(e) {
+        if (e.target === modalMonitoreo) {
+            cerrarModalMonitoreo();
+        }
+    });
+
+    document.addEventListener("keydown", function(e) {
+        if (e.key === "Escape" && !modalMonitoreo.classList.contains("hidden")) {
+            cerrarModalMonitoreo();
+        }
+    });
+</script>
+
+</body>
+</html>

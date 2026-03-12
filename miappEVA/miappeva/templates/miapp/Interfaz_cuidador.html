@@ -5,6 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EVA - Panel Cuidador</title>
+  <link rel="icon" type="image/png" href="{% static 'miapp/img/eva.png' %}">
 
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -496,6 +497,20 @@
   </div>
 </div>
 
+<!-- =====    EDITADOOOOOOOOOOOOOOOOOOO  manteniendo el chatS-->
+<!-- ===== CHAT (CUIDADOR) ===== -->
+<div class="fixed bottom-10 left-5 z-[80] flex flex-col gap-4">
+  <button id="btnLectorReceta"
+    class="w-20 h-20 rounded-full bg-orange-500 hover:bg-orange-600 text-white text-4xl font-extrabold shadow-2xl border-4 border-white active:scale-95 flex items-center justify-center"
+    type="button" title="Escanear receta">
+    📄
+  </button>
+
+  <button id="btnChat"
+    class="w-20 h-20 rounded-full bg-blue-900 hover:bg-blue-950 text-white text-4xl font-extrabold shadow-2xl border-4 border-white active:scale-95"
+    type="button" title="Chat">💬</button>
+</div>
+
 <!-- ===== CHAT (CUIDADOR) ===== -->
 <button id="btnChat"
   class="fixed bottom-10 left-5 z-[80] w-20 h-20 rounded-full bg-blue-900 hover:bg-blue-950 text-white text-4xl font-extrabold shadow-2xl border-4 border-white active:scale-95"
@@ -544,6 +559,55 @@
       <button id="btnRepetirVoz" class="px-8 py-4 rounded-2xl bg-blue-500 hover:bg-blue-600 text-white text-2xl font-extrabold shadow">🔁 Repetir</button>
       <button id="btnConfirmarVoz" class="px-8 py-4 rounded-2xl bg-green-600 hover:bg-green-700 text-white text-2xl font-extrabold shadow">✅ Enviar</button>
       <button id="btnCancelarVoz" class="px-8 py-4 rounded-2xl bg-red-600 hover:bg-red-700 text-white text-2xl font-extrabold shadow">✖ Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== EDITAAAADOOOO ===== -->
+
+<div id="modalCamara" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center z-[99998]">
+  <div class="bg-white rounded-3xl shadow-2xl w-[98%] max-w-5xl h-[90vh] p-4 md:p-10 flex flex-col relative overflow-hidden">
+    <h2 id="tituloModalCamara" class="text-3xl md:text-5xl font-extrabold text-center text-gray-800 mb-4">
+      Toma una foto de la receta
+    </h2>
+
+    <div class="flex-1 rounded-3xl border-4 border-orange-500 bg-gray-100 overflow-hidden relative mb-6 flex items-center justify-center">
+      <video id="videoPreview" class="w-full h-full object-cover hidden" autoplay playsinline muted></video>
+      <canvas id="canvasPreview" class="w-full h-full object-cover hidden"></canvas>
+      <input id="inputCapture" type="file" accept="image/*" capture="environment"
+             class="absolute inset-0 opacity-0 cursor-pointer hidden" />
+      <div id="placeholderCam" class="absolute inset-0 flex items-center justify-center text-gray-500 text-lg md:text-2xl">
+        <span>No se ha iniciado la cámara aún…</span>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center justify-center gap-4 md:gap-6 px-2 md:px-0 mt-4">
+      <button id="btnCancelarCam"
+              class="px-6 py-3 rounded-xl bg-red-600 text-white text-xl md:text-3xl font-bold hover:bg-red-700 transition shadow-md">
+        Cancelar
+      </button>
+
+      <div class="flex items-center gap-4">
+        <button id="btnTomarFoto"
+                class="relative w-24 h-24 md:w-28 md:h-28 flex items-center justify-center rounded-full bg-yellow-400 hover:bg-yellow-500 transition transform hover:scale-110 active:scale-95 focus:outline-none shadow-lg">
+          <img src="{% static 'miapp/img/camara2.png' %}"
+               alt="Tomar foto"
+               class="w-14 h-14 md:w-20 md:h-20 object-contain" />
+        </button>
+
+        <button id="btnRepetirFoto"
+                class="relative w-20 h-20 md:w-24 md:h-24 flex items-center justify-center rounded-full bg-blue-500 hover:bg-blue-600 transition transform hover:scale-110 active:scale-95 focus:outline-none shadow-lg">
+          <img src="{% static 'miapp/img/repetir.png' %}" 
+               alt="Repetir foto"
+               class="w-12 h-12 md:w-12 md:h-12 object-contain invert" />
+        </button>
+      </div>
+
+      <button id="btnAceptarFoto"
+              class="px-6 py-3 rounded-xl bg-green-600 text-white text-xl md:text-3xl font-bold hover:bg-green-700 transition shadow-md"
+              disabled>
+        Aceptar
+      </button>
     </div>
   </div>
 </div>
@@ -2230,6 +2294,195 @@ function cerrarMenuAgregar() {
 
   updateChatBadge();
 
+})();
+</script>
+
+<!-- EDITADOOOOOOO -->
+
+<script>
+(() => {
+  const btnLectorReceta = document.getElementById('btnLectorReceta');
+  const modal = document.getElementById('modalCamara');
+  const btnCancelar = document.getElementById('btnCancelarCam');
+  const btnTomar = document.getElementById('btnTomarFoto');
+  const btnAceptar = document.getElementById('btnAceptarFoto');
+  const btnRepetir = document.getElementById('btnRepetirFoto');
+
+  const video = document.getElementById('videoPreview');
+  const canvas = document.getElementById('canvasPreview');
+  const inputCapture = document.getElementById('inputCapture');
+  const placeholder = document.getElementById('placeholderCam');
+  const tituloModalCamara = document.getElementById('tituloModalCamara');
+
+  let stream = null;
+  let fotoListo = false;
+  let modo = null;
+
+  function show(el) { el.classList.remove('hidden'); }
+  function hide(el) { el.classList.add('hidden'); }
+
+  function resetUI() {
+    fotoListo = false;
+    btnAceptar.disabled = true;
+    show(placeholder);
+    hide(video);
+    hide(canvas);
+    inputCapture.value = '';
+  }
+
+  async function iniciarCamaraVivo() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false
+      });
+      video.srcObject = stream;
+      hide(placeholder);
+      show(video);
+    } catch (e) {
+      modo = 'B';
+      iniciarInputCapture();
+    }
+  }
+
+  function iniciarInputCapture() {
+    show(placeholder);
+    inputCapture.classList.remove('hidden');
+
+    inputCapture.onchange = async (ev) => {
+      const file = ev.target.files && ev.target.files[0];
+      if (!file) return;
+
+      const img = new Image();
+      img.onload = () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        hide(placeholder);
+        show(canvas);
+        fotoListo = true;
+        btnAceptar.disabled = false;
+      };
+      img.src = URL.createObjectURL(file);
+    };
+  }
+
+  async function abrirModalCamara() {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    resetUI();
+
+    if (tituloModalCamara) {
+      tituloModalCamara.textContent = 'Toma una foto de la receta';
+    }
+
+    const isSecure = window.isSecureContext;
+    const canMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+
+    if (isSecure && canMedia) {
+      modo = 'A';
+      await iniciarCamaraVivo();
+    } else {
+      modo = 'B';
+      iniciarInputCapture();
+    }
+  }
+
+  function tomarFotoDesdeVideo() {
+    if (!stream) return;
+    const track = stream.getVideoTracks()[0];
+    const settings = track.getSettings && track.getSettings();
+    const w = (video.videoWidth || (settings && settings.width)) || 1280;
+    const h = (video.videoHeight || (settings && settings.height)) || 720;
+
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, w, h);
+
+    hide(video);
+    show(canvas);
+    fotoListo = true;
+    btnAceptar.disabled = false;
+  }
+
+  function stopStream() {
+    try { stream && stream.getTracks().forEach(t => t.stop()); } catch(_) {}
+    stream = null;
+  }
+
+  function cerrarModal() {
+    stopStream();
+    resetUI();
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+
+  async function subirFotoReceta() {
+    if (!fotoListo) return;
+
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
+    if (!blob) return;
+
+    const fd = new FormData();
+    fd.append('foto', blob, 'captura.jpg');
+
+    const csrf = document.querySelector("input[name=csrfmiddlewaretoken]")?.value || "";
+
+    try {
+      const resp = await fetch("{% url 'crear_alarmas_receta_cuidador' %}", {
+        method: "POST",
+        headers: { "X-CSRFToken": csrf },
+        body: fd
+      });
+
+      const data = await resp.json();
+
+      if (data.ok) {
+        alert(data.message || "Receta procesada correctamente.");
+        cerrarModal();
+
+        if (typeof cargarAlarmasServidor === "function") {
+          await cargarAlarmasServidor();
+        }
+        if (typeof renderTablaCalendario === "function") {
+          renderTablaCalendario();
+        }
+      } else {
+        alert(data.error || data.message || "No se pudo procesar la receta.");
+      }
+    } catch (e) {
+      alert("Error al subir la receta.");
+    }
+  }
+
+  btnLectorReceta?.addEventListener('click', abrirModalCamara);
+  btnCancelar?.addEventListener('click', cerrarModal);
+
+  btnTomar?.addEventListener('click', () => {
+    if (modo === 'A') tomarFotoDesdeVideo();
+    else inputCapture.click();
+  });
+
+  btnAceptar?.addEventListener('click', subirFotoReceta);
+
+  btnRepetir?.addEventListener('click', () => {
+    if (modo === 'A') {
+      show(video);
+      hide(canvas);
+      fotoListo = false;
+      btnAceptar.disabled = true;
+    } else {
+      inputCapture.click();
+    }
+  });
+
+  window.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && !modal.classList.contains('hidden')) {
+      cerrarModal();
+    }
+  });
 })();
 </script>
 

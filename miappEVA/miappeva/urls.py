@@ -13,6 +13,19 @@ urlpatterns = [
     path("inicio/", views.inicio, name="inicio"),
     path('registro-cuidador/', views.registro_cuidador_view, name='registro_cuidador'),
     path('interfaz-cuidador/', views.interfaz_cuidador, name='interfaz_cuidador'),
+    #-- Ruta para que el cuidador cree alarmas a partir de una receta escaneada --
+    path("cuidador/crear-alarmas-receta/", views.crear_alarmas_receta_cuidador, name="crear_alarmas_receta_cuidador"),
+    #--------- ADMIN--------- 
+    path('interfaz-admin/', views.interfaz_admin, name='interfaz_admin'),
+    # --- ADMIN GESTIÓN DE USUARIO --------
+    path('gestion-usuarios/', views.gestion_usuarios, name='gestion_usuarios'),
+    path('gestion-usuarios/<int:user_id>/estado/', views.cambiar_estado_usuario, name='cambiar_estado_usuario'),
+    path('gestion-usuarios/<int:user_id>/tipo/', views.cambiar_tipo_usuario, name='cambiar_tipo_usuario'),
+    path('gestion-usuarios/<int:user_id>/reset-password/', views.restablecer_password_usuario, name='restablecer_password_usuario'),
+    path('gestion-usuarios/<int:user_id>/eliminar/', views.eliminar_usuario_inactivo, name='eliminar_usuario_inactivo'),
+    path("monitoreo-sistema/", views.monitoreo_sistema, name="monitoreo_sistema"),
+    # --------
+    path('logout/', views.logout_view, name='logout'),
     path("salir/", views.salir, name="salir"),
     path("procesar-pago/", views.procesar_pago, name="procesar_pago"),
     path("cuidador/vincular/", views.vincular_adulto_por_codigo, name="vincular_adulto_por_codigo"),

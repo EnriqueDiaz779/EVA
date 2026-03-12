@@ -5,6 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EVA - Asistente de voz</title>
+  <link rel="icon" type="image/png" href="{% static 'miapp/img/eva.png' %}">
 
   <!-- TailwindCSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -61,6 +62,7 @@
   </button>
   {% endif %}
 
+  {% if not esta_vinculado %}
   <!-- Botón Alarmas -->
   <button id="btnAlarmas"
     class="flex items-center justify-center gap-2
@@ -76,6 +78,7 @@
     <span class="text-2xl">🕒</span>
     <span class="hidden sm:inline">Alarmas</span>
   </button>
+  {% endif %}
 
   <!-- Botón Salir -->
   <form action="{% url 'salir' %}" method="post" class="m-0">
@@ -147,12 +150,16 @@
       EVA esta lista para ayudarte.
     </div>
 
+
     <!-- Contenedor responsive -->
 <div class="
   grid gap-8 sm:gap-10 md:gap-12 justify-items-center
   grid-cols-1
-  sm:grid-cols-3
-  {% if es_premium %}lg:grid-cols-4{% else %}lg:grid-cols-3{% endif %}
+  {% if es_premium %}
+    sm:grid-cols-2 lg:grid-cols-2
+  {% else %}
+    sm:grid-cols-3 lg:grid-cols-3
+  {% endif %}
 ">
 
   <!-- Micrófono -->
@@ -175,7 +182,7 @@
     <p class="mt-3 text-xl sm:text-2xl font-bold text-gray-700 md:hidden">Lector Medicamentos</p>
   </div>
 
-  <!-- Alarma -->
+  {% if not es_premium %}
   <div class="flex flex-col items-center">
     <img id="btnAlarmaManual"
          src="{% static 'miapp/img/alarmaBoton.png' %}"
@@ -184,18 +191,16 @@
                 cursor-pointer transition-transform hover:scale-110 active:scale-95 drop-shadow-2xl">
     <p class="mt-3 text-xl sm:text-2xl font-bold text-gray-700 md:hidden">Alarma</p>
   </div>
-
-  {% if es_premium %}
-  <!-- Lector receta (solo premium) -->
-  <div class="flex flex-col items-center">
-    <img id="btnLectorReceta"
-         src="{% static 'miapp/img/receta.png' %}"
-         alt="Lector receta" title="Presione para reconocer su receta"
-         class="w-44 h-44 sm:w-52 sm:h-52 md:w-56 md:h-56 lg:w-60 lg:h-60
-                cursor-pointer transition-transform hover:scale-110 active:scale-95 drop-shadow-2xl">
-    <p class="mt-3 text-xl sm:text-2xl font-bold text-gray-700 md:hidden">Lector Receta</p>
-  </div>
   {% endif %}
+  </div>
+
+<!-- Mensaje consulte a su medico -->
+<div class="mt-6 flex justify-center">
+  <div class="bg-blue-50 border-2 border-blue-300 text-blue-800
+              px-6 py-4 rounded-2xl shadow-md
+              text-xl sm:text-2xl font-semibold text-center max-w-3xl leading-relaxed">
+      Esta información es solo una ayuda. Para mayor seguridad, conuslte a su medico.
+  </div>
 </div>
 
 <!-- Respuesta IA (se mantiene fuera del contenedor) -->
@@ -340,6 +345,92 @@
   </button>
 </div>
 </div> 
+</div>
+
+<div id="modalAlarmaSimple"
+     class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
+
+  <div class="bg-white rounded-3xl shadow-2xl 
+              w-[96%] sm:w-[90%] md:w-[80%] lg:w-[60%]
+              max-h-[90vh] p-4 sm:p-6 md:p-10 
+              flex flex-col items-center justify-start 
+              overflow-y-auto text-center">
+
+    <!-- Paso 1 -->
+<div id="paso1" class="flex flex-col items-center justify-center w-full max-w-6xl space-y-6 sm:space-y-8 mt-4 sm:mt-8">
+
+    <!-- Título con emoji de alarma arriba -->
+<div class="flex flex-col items-center justify-center text-center mb-4">
+  <span class="text-[3rem] sm:text-[5rem] md:text-[4rem] lg:text-[4rem] drop-shadow-lg">⏰</span>
+  <h2 class="text-2xl sm:text-3xl md:text-5xl lg:text-5xl font-extrabold text-blue-800 mt-2">
+    Selecciona la hora y los minutos
+  </h2>
+</div>
+
+      <!-- HORA Y MINUTOS EN LÍNEA -->
+      <div class="flex flex-wrap sm:flex-nowrap items-center justify-center gap-6 sm:gap-10 mt-2 sm:mt-6">
+        <!-- HORA -->
+        <div class="flex items-center gap-2 sm:gap-4">
+          <button id="menosHora" class="bg-blue-200 hover:bg-blue-300 text-3xl sm:text-5xl font-bold rounded-full w-12 h-12 sm:w-20 sm:h-20 shadow-lg">−</button>
+          <p id="horaDisplay" class="text-[3.5rem] sm:text-[5rem] font-extrabold tracking-wider text-blue-900">08</p>
+          <button id="masHora" class="bg-blue-200 hover:bg-blue-300 text-3xl sm:text-5xl font-bold rounded-full w-12 h-12 sm:w-20 sm:h-20 shadow-lg">+</button>
+        </div>
+
+        <!-- DOS PUNTOS -->
+        <span class="text-[3.5rem] sm:text-[5rem] font-extrabold text-blue-900 select-none">:</span>
+
+        <!-- MINUTOS -->
+        <div class="flex items-center gap-2 sm:gap-4">
+          <button id="menosMin" class="bg-blue-200 hover:bg-blue-300 text-3xl sm:text-5xl font-bold rounded-full w-12 h-12 sm:w-20 sm:h-20 shadow-lg">−</button>
+          <p id="minDisplay" class="text-[3.5rem] sm:text-[5rem] font-extrabold tracking-wider text-blue-900">00</p>
+          <button id="masMin" class="bg-blue-200 hover:bg-blue-300 text-3xl sm:text-5xl font-bold rounded-full w-12 h-12 sm:w-20 sm:h-20 shadow-lg">+</button>
+        </div>
+      </div>
+
+      <!-- AM / PM -->
+      <div class="flex justify-center gap-4 sm:gap-6 mt-3 sm:mt-5 flex-wrap">
+        <button id="amBtn" class="px-6 sm:px-8 py-3 sm:py-4 text-2xl sm:text-3xl rounded-full bg-blue-500 text-white font-bold shadow-md transition">AM</button>
+        <button id="pmBtn" class="px-6 sm:px-8 py-3 sm:py-4 text-2xl sm:text-3xl rounded-full bg-gray-300 text-gray-800 font-bold shadow-md transition">PM</button>
+      </div>
+
+      <!-- ✅ BOTONES -->
+      <div class="flex flex-col sm:flex-row gap-4 sm:gap-6 mt-6 sm:mt-10 justify-center w-full px-4">
+        <button id="cancelarPaso1" class="bg-red-500 hover:bg-red-600 text-white text-2xl sm:text-3xl font-bold px-6 sm:px-10 py-3 sm:py-5 rounded-full shadow-lg w-full sm:w-auto">Cancelar</button>
+        <button id="continuarPaso1" class="bg-green-500 hover:bg-green-600 text-white text-2xl sm:text-3xl font-bold px-6 sm:px-10 py-3 sm:py-5 rounded-full shadow-lg w-full sm:w-auto">Continuar</button>
+      </div>
+    </div>
+
+    <!-- Paso 2 -->
+    <div id="paso2" class="hidden flex-col items-center justify-center w-full max-w-3xl text-center space-y-8 sm:space-y-10 mt-4 sm:mt-8 px-2">
+      <h2 class="text-3xl sm:text-4xl font-extrabold text-blue-800">📅 Selecciona los días</h2>
+      <div id="diasBtns" class="flex flex-wrap justify-center gap-3 sm:gap-6">
+        <button class="dia w-16 sm:w-24 h-16 sm:h-20 bg-gray-300 text-2xl sm:text-3xl font-bold rounded-full">Lun</button>
+        <button class="dia w-16 sm:w-24 h-16 sm:h-20 bg-gray-300 text-2xl sm:text-3xl font-bold rounded-full">Mar</button>
+        <button class="dia w-16 sm:w-24 h-16 sm:h-20 bg-gray-300 text-2xl sm:text-3xl font-bold rounded-full">Mié</button>
+        <button class="dia w-16 sm:w-24 h-16 sm:h-20 bg-gray-300 text-2xl sm:text-3xl font-bold rounded-full">Jue</button>
+        <button class="dia w-16 sm:w-24 h-16 sm:h-20 bg-gray-300 text-2xl sm:text-3xl font-bold rounded-full">Vie</button>
+        <button class="dia w-16 sm:w-24 h-16 sm:h-20 bg-gray-300 text-2xl sm:text-3xl font-bold rounded-full">Sáb</button>
+        <button class="dia w-16 sm:w-24 h-16 sm:h-20 bg-gray-300 text-2xl sm:text-3xl font-bold rounded-full">Dom</button>
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-4 sm:gap-6 mt-6 justify-center w-full px-4">
+        <button id="volverPaso1" class="bg-gray-400 hover:bg-gray-500 text-white text-2xl sm:text-3xl font-bold px-6 sm:px-10 py-3 sm:py-5 rounded-full shadow-lg w-full sm:w-auto">Atrás</button>
+        <button id="continuarPaso2" class="bg-green-500 hover:bg-green-600 text-white text-2xl sm:text-3xl font-bold px-6 sm:px-10 py-3 sm:py-5 rounded-full shadow-lg w-full sm:w-auto">Continuar</button>
+      </div>
+    </div>
+
+    <!-- Paso 3 -->
+    <div id="paso3" class="hidden flex-col items-center justify-center w-full max-w-3xl text-center space-y-8 sm:space-y-10 mt-4 sm:mt-8 px-4">
+      <h2 class="text-3xl sm:text-4xl font-extrabold text-blue-800">💊 Nombre del medicamento</h2>
+      <input id="nombreMed" type="text"
+             class="w-full rounded-3xl border-4 border-blue-400 focus:border-blue-600 text-2xl sm:text-4xl text-center p-4 sm:p-6 outline-none shadow-lg"
+             placeholder="Ej. Paracetamol">
+      <div class="flex flex-col sm:flex-row gap-4 sm:gap-6 mt-6 justify-center w-full px-4">
+        <button id="volverPaso2" class="bg-gray-400 hover:bg-gray-500 text-white text-2xl sm:text-3xl font-bold px-6 sm:px-10 py-3 sm:py-5 rounded-full shadow-lg w-full sm:w-auto">Atrás</button>
+        <button id="guardarAlarmaFinal" class="bg-green-600 hover:bg-green-700 text-white text-2xl sm:text-3xl font-bold px-6 sm:px-10 py-3 sm:py-5 rounded-full shadow-lg w-full sm:w-auto">Guardar</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- MODAL ALARMA RESPONSIVE -->
@@ -518,6 +609,16 @@
       estado.className = `px-8 py-4 rounded-full font-bold text-3xl shadow-md ${colores[color]}`;
       estado.textContent = texto;
     }
+
+    window.onload = function() {
+  const esPremium = document.getElementById("evaConfig")?.dataset.esPremium === "1";
+
+  const mensajeBienvenida = esPremium
+    ? "Presione el botón azul para hablar conmigo o el amarillo para escanear tu medicamento. Estoy aquí para ayudarte en todo momento."
+    : "Presione el botón azul para hablar conmigo, el amarillo para escanear tu medicamento o el rojo para crear alarmas. Estoy aquí para ayudarte en todo momento.";
+
+  hablar(mensajeBienvenida);
+};
 
     window.onload = function() {
       const esPremium = document.getElementById("evaConfig")?.dataset.esPremium === "1";
@@ -1069,24 +1170,28 @@ function getCookie(name) {
   return cookieValue;
 }
 
-// === PANEL DE ALARMAS SIN CAMBIAR DE PÁGINA ===
 const btnAlarmas = document.getElementById("btnAlarmas");
 const panel = document.getElementById("panelAlarmas");
 const cerrar = document.getElementById("cerrarPanel");
 const lista = document.getElementById("listaAlarmas");
 const btnEliminarTodasAlarmas = document.getElementById("btnEliminarTodasAlarmas");
 
-// Mostrar panel y cargar alarmas
-btnAlarmas.addEventListener("click", async () => {
-  panel.classList.remove("hidden");
-  await cargarAlarmas();
-});
+if (btnAlarmas) {
+  btnAlarmas.addEventListener("click", async () => {
+    panel.classList.remove("hidden");
+    await cargarAlarmas();
+  });
+}
 
-// Cerrar panel
-cerrar.addEventListener("click", () => {
-  panel.classList.add("hidden");
-});
+if (cerrar) {
+  cerrar.addEventListener("click", () => {
+    panel.classList.add("hidden");
+  });
+}
 
+if (btnEliminarTodasAlarmas) {
+  btnEliminarTodasAlarmas.addEventListener("click", eliminarTodasAlarmas);
+}
 if (btnEliminarTodasAlarmas) {
   btnEliminarTodasAlarmas.addEventListener("click", eliminarTodasAlarmas);
 }
@@ -1319,6 +1424,20 @@ if ("serviceWorker" in navigator) {
     paso3.classList.add('hidden');
     try { hablar("Selecciona la hora y los minutos de tu alarma y presiona continuar."); } catch {}
   });
+
+
+  // === Mostrar modal                            EDITADOOOOOOOOOOOOOOO2222222222222 ===
+  const btnAlarmaManual = document.getElementById('btnAlarmaManual');
+
+  if (btnAlarmaManual) {
+    btnAlarmaManual.addEventListener('click', () => {
+      modal.classList.remove('hidden');
+      paso1.classList.remove('hidden');
+      paso2.classList.add('hidden');
+      paso3.classList.add('hidden');
+      try { hablar("Selecciona la hora y los minutos de tu alarma y presiona continuar."); } catch {}
+    });
+  }
 
   // === Actualizar displays ===
   const updateDisplay = () => {

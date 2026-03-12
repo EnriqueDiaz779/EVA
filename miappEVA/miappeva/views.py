@@ -1,7 +1,4 @@
-from urllib import request
-from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
-from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
 from django.http import JsonResponse
@@ -15,7 +12,6 @@ from .openai_client import preguntar_openai
 from datetime import date
 import logging
 from difflib import SequenceMatcher
-from .models import PatronVoz
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.core.files.base import ContentFile
 from PIL import Image
@@ -26,18 +22,22 @@ import unicodedata
 from django.conf import settings
 from openai import OpenAI
 from django.views.decorators.csrf import csrf_exempt
-from datetime import timedelta
-from .models import CapturaTemporal, MedicamentoReconocido
+from .models import  MedicamentoReconocido
 from datetime import datetime, timedelta, time
 from django.utils import timezone
-from django.views.decorators.csrf import csrf_exempt
 from .models import PushSubscription
 import secrets
 import string
 from django.views.decorators.http import require_POST, require_GET
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 import math
+# ------ ADMIN -----------
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.decorators import login_required, user_passes_test
+from django.utils.crypto import get_random_string
+from .models import PerfilUsuario
+from django.contrib.auth import logout
+
 
 try:
     from pywebpush import webpush, WebPushException
@@ -646,6 +646,122 @@ client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
 logger = logging.getLogger(__name__)
 
+#-- función para cuidadores que escanean receta para su adulto vinculado --#
+@login_required
+@require_POST
+def crear_alarmas_receta_cuidador(request):
+    """
+    El cuidador escanea una receta, pero las alarmas/tratamiento
+    se guardan para el adulto vinculado.
+    """
+    try:
+        ident = (request.user.username or "").strip()
+        mysql_user = verificar_usuario_en_bd(ident)
+
+        if not mysql_user or mysql_user.get("tipo") != "cuidador":
+            return JsonResponse({"ok": False, "error": "Solo cuidadores."}, status=403)
+
+        cuidador_id = mysql_user["id"]
+
+        # Validar premium del cuidador
+        if not _mysql_cuidador_premium_activo(int(cuidador_id)):
+            return JsonResponse(
+                {"ok": False, "error": "Función premium. Activa tu membresía para usar recetas."},
+                status=403
+            )
+
+        adulto_vinculado = _mysql_get_unico_vinculo_cuidador(cuidador_id)
+        if not adulto_vinculado:
+            return JsonResponse(
+                {"ok": False, "error": "No tienes un adulto vinculado."},
+                status=403
+            )
+
+        adulto_id = int(adulto_vinculado["id"])
+
+        # Obtener correo del adulto para mapearlo a Django user
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT Nombre_Completo, correo FROM Usuarios WHERE Id_Usuario=%s LIMIT 1",
+                [adulto_id],
+            )
+            row = cursor.fetchone()
+
+        if not row:
+            return JsonResponse({"ok": False, "error": "No encontré al adulto vinculado."}, status=404)
+
+        nombre_adulto = row[0] or ""
+        correo_adulto = row[1] or ""
+
+        adulto_django = _django_user_from_mysql_adulto(nombre_adulto, correo_adulto)
+        if not adulto_django:
+            return JsonResponse(
+                {"ok": False, "error": "No encontré el usuario Django del adulto."},
+                status=404
+            )
+
+        foto = request.FILES.get("foto")
+        if not foto:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+            items = payload.get("items", [])
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "message": f"Detecté {len(items)} medicamentos",
+                    "detectados": len(items),
+                    "medicamentos": items,
+                }
+            )
+
+        content_type = (getattr(foto, "content_type", "") or "").lower()
+        if not content_type.startswith("image/"):
+            return JsonResponse({"ok": False, "error": "Formato no válido. Debe ser imagen."}, status=400)
+
+        image_bytes = foto.read()
+        if not image_bytes:
+            return JsonResponse({"ok": False, "error": "No se pudo leer la imagen."}, status=400)
+
+        medicamentos, debug_text = _analizar_receta_openai(image_bytes)
+
+        if not medicamentos:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "message": "Detecté 0 medicamentos",
+                    "detectados": 0,
+                    "medicamentos": [],
+                    "error": "No pude extraer medicamentos de la receta.",
+                    "debug": debug_text,
+                },
+                status=200,
+            )
+
+        tratamiento_id, total_alarmas, resumen = _guardar_tratamiento_medicamentos_alarmas(
+            adulto_id,
+            medicamentos,
+            django_user=adulto_django
+        )
+
+        detectados = len(resumen)
+
+        return JsonResponse(
+            {
+                "ok": True,
+                "message": f"Detecté {detectados} medicamentos para {adulto_vinculado['nombre']}",
+                "detectados": detectados,
+                "tratamiento_id": tratamiento_id,
+                "alarmas_creadas": total_alarmas,
+                "medicamentos": resumen,
+                "adulto": {
+                    "id": adulto_id,
+                    "nombre": adulto_vinculado["nombre"]
+                }
+            }
+        )
+
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=400)
+
 #---login----#
 def login_view(request):
     if request.user.is_authenticated:
@@ -670,7 +786,11 @@ def login_view(request):
     # CASO 1: Usuario existe en MySQL
     if usuario_mysql:
         print(f"✅ Usuario encontrado en MySQL con tipo: {usuario_mysql['tipo']}")
-        # Intentar crear o actualizar en Django si no existe
+
+        if not usuario_mysql.get("activo", True):
+            print(f"⛔ Usuario desactivado: {nombre_original}")
+            messages.error(request, "Tu cuenta está desactivada. Contacta al administrador.")
+            return render(request, 'miapp/login.html', {"previous_username": nombre_original})
         user = User.objects.filter(username=username).first()
         
         if user is None:
@@ -694,7 +814,12 @@ def login_view(request):
         registrar_login_en_db(username, request)
         
         # Redirigir según tipo en MySQL
-        if usuario_mysql['tipo'] == "cuidador":
+        tipo_usuario = (usuario_mysql.get('tipo') or '').strip().lower()
+
+        if tipo_usuario == "admin":
+            print(f"🎯 Redirigiendo admin a interfaz_admin")
+            return redirect('interfaz_admin')
+        elif tipo_usuario == "cuidador":
             print(f"🎯 Redirigiendo cuidador a interfaz_cuidador")
             return redirect('interfaz_cuidador')
         else:
@@ -785,26 +910,65 @@ def verificar_usuario_en_bd(identificador):
         with connection.cursor() as cursor:
             # 1) buscar por correo
             cursor.execute(
-                "SELECT Id_Usuario, Nombre_Completo, Tipo, correo, Telefono "
+                "SELECT Id_Usuario, Nombre_Completo, Tipo, correo, Telefono, activo "
                 "FROM Usuarios WHERE correo = %s LIMIT 1",
                 [ident.lower()]
             )
             row = cursor.fetchone()
             if row:
-                return {"id": row[0], "nombre": row[1], "tipo": row[2], "correo": row[3], "telefono": row[4]}
+                return {
+                    "id": row[0],
+                    "nombre": row[1],
+                    "tipo": row[2],
+                    "correo": row[3],
+                    "telefono": row[4],
+                    "activo": bool(row[5]),
+                }
 
             # 2) buscar por nombre
             cursor.execute(
-                "SELECT Id_Usuario, Nombre_Completo, Tipo, correo, Telefono "
+                "SELECT Id_Usuario, Nombre_Completo, Tipo, correo, Telefono, activo "
                 "FROM Usuarios WHERE Nombre_Completo = %s LIMIT 1",
                 [ident]
             )
             row = cursor.fetchone()
             if row:
-                return {"id": row[0], "nombre": row[1], "tipo": row[2], "correo": row[3], "telefono": row[4]}
+                return {
+                    "id": row[0],
+                    "nombre": row[1],
+                    "tipo": row[2],
+                    "correo": row[3],
+                    "telefono": row[4],
+                    "activo": bool(row[5]),
+                }
     except Exception as e:
         print(f"❌ Error verificando usuario: {e}")
     return None
+    
+#--- CAMBIOS ADMIN ---------
+def _mysql_get_tipo_usuario_logueado(request):
+    ident = (request.user.username or "").strip()
+    mysql_user = verificar_usuario_en_bd(ident)
+
+    if not mysql_user:
+        nombre = (request.user.first_name or "").strip()
+        mysql_user = verificar_usuario_en_bd(nombre)
+
+    if not mysql_user:
+        return None
+
+    return (mysql_user.get("tipo") or "").strip().lower()
+
+def _es_admin(request):
+    return _mysql_get_tipo_usuario_logueado(request) == "admin"
+
+#--- PROTEGER DE LOS DEMAS USUARIOS, SOLO ADMIN PUEDE ACCEDER -----------
+def _require_admin(request):
+    tipo = _mysql_get_tipo_usuario_logueado(request)
+    if tipo != "admin":
+        return False, JsonResponse({"ok": False, "error": "Acceso solo para administradores."}, status=403)
+    return True, None
+
 
 #----login en bd------#
 def registrar_login_en_db(identificador, request):
@@ -845,9 +1009,14 @@ def get_client_ip(request):
         ip = request.META.get('REMOTE_ADDR')
     return ip
 
-#-----inicio----#
+#-------- ADMINISTRADOR ----------#
 @login_required
 def inicio(request):
+    tipo_usuario = _mysql_get_tipo_usuario_logueado(request)
+
+    if tipo_usuario == "admin":
+        return redirect("interfaz_admin")
+
     nombre = request.user.first_name or request.user.username
     ultimas = OrdenVoz.objects.filter(usuario=request.user)[:5]
 
@@ -856,22 +1025,23 @@ def inicio(request):
 
     codigo_unico = None
     es_premium = False
+    esta_vinculado = False
 
     if mysql_user and mysql_user.get("tipo") == "adulto":
         usuario_id = int(mysql_user.get("id") or 0)
         if usuario_id:
             codigo_unico = _mysql_get_or_create_codigo_unico(usuario_id)
-
-            # ✅ PREMIUM si está vinculado y el cuidador tiene membresía activa
             es_premium = _mysql_adulto_premium_activo(usuario_id)
+
+            vinculo = _mysql_get_vinculo_por_adulto(usuario_id)
+            esta_vinculado = bool(vinculo and vinculo.get("activo"))
 
     return render(request, 'miapp/inicio.html', {
         "nombre": nombre,
         "ultimas": ultimas,
         "codigo_unico": codigo_unico,
-
-        # ✅ NUEVO
         "es_premium": es_premium,
+        "esta_vinculado": esta_vinculado,
     })
 
 # ---------CÓDIGO ÚNICO (ADULTO)------#
@@ -1070,9 +1240,14 @@ def cambiar_adulto_actual(request):
 #------interfaz cuidador-----#
 @login_required
 def interfaz_cuidador(request):
+    if _es_admin(request):
+        return redirect("interfaz_admin")
 
     ident = (request.user.username or "").strip()
     mysql_user = verificar_usuario_en_bd(ident)
+
+    if not mysql_user or mysql_user.get("tipo") != "cuidador":
+        return redirect("inicio")
 
     nombre = ""
     correo = ""
@@ -1092,7 +1267,6 @@ def interfaz_cuidador(request):
     meds_payload = []
 
     if cuidador_id:
-
         adulto_vinculado = _mysql_get_unico_vinculo_cuidador(cuidador_id)
         if adulto_vinculado:
             with connection.cursor() as cursor:
@@ -1111,20 +1285,18 @@ def interfaz_cuidador(request):
                 )
 
     return render(
-    request,
-    "miapp/Interfaz_cuidador.html",
-    {
-        "cuidador_nombre": nombre,
-        "cuidador_correo": correo,
-        "cuidador_telefono": telefono,
-        "adulto_vinculado": adulto_vinculado,
-        "meds_adulto": meds_payload,
-        "bloqueado_por_vinculo": (adulto_vinculado is None),
-
-        # ✅ PASO 4: MANDA EL TOKEN DE MAPBOX AL TEMPLATE
-        "mapbox_token": settings.MAPBOX_TOKEN_PUBLIC,
-    },
-)
+        request,
+        "miapp/Interfaz_cuidador.html",
+        {
+            "cuidador_nombre": nombre,
+            "cuidador_correo": correo,
+            "cuidador_telefono": telefono,
+            "adulto_vinculado": adulto_vinculado,
+            "meds_adulto": meds_payload,
+            "bloqueado_por_vinculo": (adulto_vinculado is None),
+            "mapbox_token": settings.MAPBOX_TOKEN_PUBLIC,
+        },
+    )
 
 #------MYSQL IDENTIFICADOR------#
 def _mysql_get_usuario_por_identificador(identificador: str):
@@ -3175,3 +3347,564 @@ def api_v1_logout(request):
         return JsonResponse({"ok": False, "error": "Método no permitido"}, status=405)
     auth_logout(request)
     return JsonResponse({"ok": True})
+
+
+
+# ----  VISTAS AMINISTRADOR ------
+@login_required
+def interfaz_admin(request):
+    ok, resp = _require_admin(request)
+    if not ok:
+        return redirect("inicio")
+
+    total_usuarios = 0
+    total_adultos = 0
+    total_cuidadores = 0
+    total_admins = 0
+    total_alarmas_activas = 0
+    usuarios = []
+
+    # NUEVO
+    relaciones_cuidado = []
+    adultos_sin_vinculo = 0
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM Usuarios WHERE activo = 1")
+            total_usuarios = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT COUNT(*) FROM Usuarios WHERE Tipo = 'adulto' AND activo = 1")
+            total_adultos = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT COUNT(*) FROM Usuarios WHERE Tipo = 'cuidador' AND activo = 1")
+            total_cuidadores = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT COUNT(*) FROM Usuarios WHERE Tipo = 'admin' AND activo = 1")
+            total_admins = cursor.fetchone()[0] or 0
+
+            total_alarmas_activas = Alarma.objects.filter(activa=True).count()
+
+            cursor.execute("""
+                SELECT Id_Usuario, Nombre_Completo, Tipo, activo, creado_en
+                FROM Usuarios
+                ORDER BY creado_en DESC
+            """)
+            rows = cursor.fetchall()
+
+            for row in rows:
+                usuarios.append({
+                    "id": row[0],
+                    "nombre": row[1],
+                    "tipo": row[2],
+                    "activo": bool(row[3]),
+                    "fecha_registro": row[4],
+                })
+
+            # ===== NUEVO: RESUMEN DE RELACIONES ADULTO - CUIDADOR =====
+            cursor.execute("""
+                SELECT 
+                    ua.Nombre_Completo AS adulto_nombre,
+                    uc.Nombre_Completo AS cuidador_nombre
+                FROM adulto_cuidador ac
+                INNER JOIN Usuarios ua ON ua.Id_Usuario = ac.Adulto_id
+                INNER JOIN Usuarios uc ON uc.Id_Usuario = ac.Cuidador_id
+                WHERE ac.Activo = 1
+                ORDER BY ac.fecha_asignacion DESC
+                LIMIT 5
+            """)
+            relaciones_rows = cursor.fetchall()
+
+            for row in relaciones_rows:
+                relaciones_cuidado.append({
+                    "adulto_nombre": row[0],
+                    "cuidador_nombre": row[1],
+                })
+
+            # ===== NUEVO: CONTAR ADULTOS SIN VÍNCULO =====
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM Usuarios u
+                WHERE u.Tipo = 'adulto'
+                  AND u.activo = 1
+                  AND u.Id_Usuario NOT IN (
+                      SELECT ac.Adulto_id
+                      FROM adulto_cuidador ac
+                      WHERE ac.Activo = 1
+                  )
+            """)
+            adultos_sin_vinculo = cursor.fetchone()[0] or 0
+
+    except Exception as e:
+        print(f"❌ Error cargando dashboard admin: {e}")
+
+    nombre = request.user.first_name or request.user.username
+
+    return render(request, "miapp/interfaz_admin.html", {
+        "nombre": nombre,
+        "total_usuarios": total_usuarios,
+        "total_adultos": total_adultos,
+        "total_cuidadores": total_cuidadores,
+        "total_admins": total_admins,
+        "total_alarmas_activas": total_alarmas_activas,
+        "usuarios": usuarios,
+
+        # NUEVO
+        "relaciones_cuidado": relaciones_cuidado,
+        "adultos_sin_vinculo": adultos_sin_vinculo,
+    })
+
+@login_required
+def gestion_usuarios(request):
+    ok, resp = _require_admin(request)
+    if not ok:
+        return redirect("inicio")
+    return redirect("interfaz_admin")
+
+@login_required
+@require_POST
+def cambiar_estado_usuario(request, user_id):
+    ok, resp = _require_admin(request)
+    if not ok:
+        return redirect("inicio")
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT Id_Usuario, Nombre_Completo, correo, Tipo, activo
+                FROM Usuarios
+                WHERE Id_Usuario = %s
+                LIMIT 1
+            """, [user_id])
+            row = cursor.fetchone()
+
+            if not row:
+                messages.error(request, "Usuario no encontrado.")
+                return redirect("gestion_usuarios")
+
+            usuario_id, nombre, correo, tipo, activo_actual = row
+
+            # Evita que un admin se desactive a sí mismo
+            admin_actual = verificar_usuario_en_bd(request.user.username) or verificar_usuario_en_bd(request.user.first_name)
+            if admin_actual and int(admin_actual["id"]) == int(usuario_id):
+                messages.warning(request, "No puedes desactivar tu propia cuenta.")
+                return redirect("gestion_usuarios")
+
+            nuevo_estado = 0 if activo_actual else 1
+
+            cursor.execute("""
+                UPDATE Usuarios
+                SET activo = %s
+                WHERE Id_Usuario = %s
+            """, [nuevo_estado, usuario_id])
+
+        connection.commit()
+
+        # sincronizar Django
+        _sincronizar_usuario_django_activo(nombre, correo, bool(nuevo_estado))
+
+        estado = "activada" if nuevo_estado else "desactivada"
+        messages.success(request, f"La cuenta de {nombre} fue {estado}.")
+
+    except Exception as e:
+        connection.rollback()
+        messages.error(request, f"Error al cambiar estado: {e}")
+
+    return redirect("gestion_usuarios")
+
+
+@login_required
+def cambiar_tipo_usuario(request, user_id):
+    ok, resp = _require_admin(request)
+    if not ok:
+        return redirect("inicio")
+
+    if request.method == "POST":
+        nuevo_tipo = (request.POST.get("tipo_cuenta") or "").strip().lower()
+
+        if nuevo_tipo not in ["adulto", "cuidador", "admin"]:
+            messages.error(request, "Tipo de cuenta no válido.")
+            return redirect("gestion_usuarios")
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE Usuarios
+                    SET Tipo = %s
+                    WHERE Id_Usuario = %s
+                """, [nuevo_tipo, user_id])
+
+            connection.commit()
+            messages.success(request, "Tipo de cuenta actualizado correctamente.")
+
+        except Exception as e:
+            connection.rollback()
+            messages.error(request, f"Error al actualizar tipo: {e}")
+
+    return redirect("gestion_usuarios")
+
+
+@login_required
+def restablecer_password_usuario(request, user_id):
+    ok, resp = _require_admin(request)
+    if not ok:
+        return redirect("inicio")
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT Id_Usuario, Nombre_Completo
+                FROM Usuarios
+                WHERE Id_Usuario = %s
+                LIMIT 1
+            """, [user_id])
+            row = cursor.fetchone()
+
+            if not row:
+                messages.error(request, "Usuario no encontrado.")
+                return redirect("gestion_usuarios")
+
+            usuario_id, nombre = row
+            nueva_password = get_random_string(10)
+            nuevo_hash = make_password(nueva_password)
+
+            cursor.execute("""
+                UPDATE Usuarios
+                SET password_hash = %s
+                WHERE Id_Usuario = %s
+            """, [nuevo_hash, usuario_id])
+
+        connection.commit()
+
+        messages.success(
+            request,
+            f"Contraseña restablecida para {nombre}. Nueva contraseña temporal: {nueva_password}"
+        )
+
+    except Exception as e:
+        connection.rollback()
+        messages.error(request, f"Error al restablecer contraseña: {e}")
+
+    return redirect("gestion_usuarios")
+
+
+@login_required
+def eliminar_usuario_inactivo(request, user_id):
+    ok, resp = _require_admin(request)
+    if not ok:
+        return redirect("inicio")
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT Id_Usuario, Nombre_Completo, activo
+                FROM Usuarios
+                WHERE Id_Usuario = %s
+                LIMIT 1
+            """, [user_id])
+            row = cursor.fetchone()
+
+            if not row:
+                messages.error(request, "Usuario no encontrado.")
+                return redirect("gestion_usuarios")
+
+            usuario_id, nombre, activo = row
+
+            if activo:
+                messages.warning(request, "Solo se pueden eliminar cuentas inactivas.")
+                return redirect("gestion_usuarios")
+
+            cursor.execute("""
+                DELETE FROM Usuarios
+                WHERE Id_Usuario = %s
+            """, [usuario_id])
+
+        connection.commit()
+        messages.success(request, f"La cuenta inactiva de {nombre} fue eliminada.")
+
+    except Exception as e:
+        connection.rollback()
+        messages.error(request, f"Error al eliminar usuario: {e}")
+
+    return redirect("gestion_usuarios")
+
+def logout_view(request):
+    logout(request)
+    return redirect('login')
+
+# ------ SISTEMA DE MONITOREO DE ERRORES (BÁSICO) ------
+def _check_db_status():
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+
+        return {
+            "nombre": "Base de datos",
+            "estado": "activo",
+            "detalle": "Conexión correcta con MySQL.",
+        }
+    except Exception as e:
+        return {
+            "nombre": "Base de datos",
+            "estado": "error",
+            "detalle": str(e),
+        }
+
+
+def _check_openai_status():
+    try:
+        api_key = bool(getattr(settings, "OPENAI_API_KEY", None))
+        if not api_key:
+            return {
+                "nombre": "IA / OpenAI",
+                "estado": "error",
+                "detalle": "No se encontró OPENAI_API_KEY en settings.",
+            }
+
+        return {
+            "nombre": "IA / OpenAI",
+            "estado": "activo",
+            "detalle": "Cliente configurado correctamente.",
+        }
+    except Exception as e:
+        return {
+            "nombre": "IA / OpenAI",
+            "estado": "error",
+            "detalle": str(e),
+        }
+
+
+def _check_voice_status():
+    try:
+        ultimas_24h = timezone.now() - timedelta(hours=24)
+
+        total = OrdenVoz.objects.filter(creado__gte=ultimas_24h).count()
+        no_entendidos = OrdenVoz.objects.filter(
+            creado__gte=ultimas_24h,
+            intent="no_entendido"
+        ).count()
+
+        fuera_tema = OrdenVoz.objects.filter(
+            creado__gte=ultimas_24h,
+            intent="fuera_de_tema"
+        ).count()
+
+        estado = "activo"
+        if total == 0:
+            estado = "advertencia"
+
+        return {
+            "nombre": "Reconocimiento de voz",
+            "estado": estado,
+            "detalle": "Monitoreo de órdenes de voz recientes.",
+            "total_24h": total,
+            "no_entendidos": no_entendidos,
+            "fuera_de_tema": fuera_tema,
+        }
+    except Exception as e:
+        return {
+            "nombre": "Reconocimiento de voz",
+            "estado": "error",
+            "detalle": str(e),
+        }
+
+
+def _check_scanner_status():
+    try:
+        ultimas_24h = timezone.now() - timedelta(hours=24)
+
+        capturas = CapturaTemporal.objects.filter(creado__gte=ultimas_24h).count()
+        analizadas = CapturaTemporal.objects.filter(
+            creado__gte=ultimas_24h,
+            estado="analizado"
+        ).count()
+
+        reconocidos = MedicamentoReconocido.objects.filter(creado__gte=ultimas_24h).count()
+
+        estado = "activo"
+        if capturas > 0 and analizadas == 0:
+            estado = "advertencia"
+
+        return {
+            "nombre": "Escáner de medicamentos",
+            "estado": estado,
+            "detalle": "Estado del flujo de capturas y análisis.",
+            "capturas_24h": capturas,
+            "analizadas_24h": analizadas,
+            "reconocidos_24h": reconocidos,
+        }
+    except Exception as e:
+        return {
+            "nombre": "Escáner de medicamentos",
+            "estado": "error",
+            "detalle": str(e),
+        }
+
+
+def _check_alarm_status():
+    try:
+        activas = Alarma.objects.filter(activa=True).count()
+        entregadas = Alarma.objects.filter(entregada=True).count()
+
+        ultimas_24h = timezone.now() - timedelta(hours=24)
+        disparadas = Alarma.objects.filter(disparada_at__gte=ultimas_24h).count()
+
+        estado = "activo"
+
+        return {
+            "nombre": "Sistema de alarmas",
+            "estado": estado,
+            "detalle": "Alarmas activas y recientes.",
+            "activas": activas,
+            "entregadas": entregadas,
+            "disparadas_24h": disparadas,
+        }
+    except Exception as e:
+        return {
+            "nombre": "Sistema de alarmas",
+            "estado": "error",
+            "detalle": str(e),
+        }
+
+
+def _check_push_status():
+    try:
+        total_subs = PushSubscription.objects.count()
+
+        if webpush is None:
+            return {
+                "nombre": "Notificaciones push",
+                "estado": "advertencia",
+                "detalle": "PyWebPush no está disponible en este entorno.",
+                "suscripciones": total_subs,
+            }
+
+        return {
+            "nombre": "Notificaciones push",
+            "estado": "activo",
+            "detalle": "Servicio push disponible.",
+            "suscripciones": total_subs,
+        }
+    except Exception as e:
+        return {
+            "nombre": "Notificaciones push",
+            "estado": "error",
+            "detalle": str(e),
+        }
+    
+
+# ------- MONITOREO -------
+@login_required
+def monitoreo_sistema(request):
+    ok, resp = _require_admin(request)
+    if not ok:
+        return JsonResponse({"ok": False, "error": "Acceso denegado."}, status=403)
+
+    revision = timezone.localtime()
+
+    servicios = [
+        _check_db_status(),
+        _check_openai_status(),
+        _check_voice_status(),
+        _check_scanner_status(),
+        _check_alarm_status(),
+        _check_push_status(),
+    ]
+
+    total_activos = sum(1 for s in servicios if s["estado"] == "activo")
+    total_advertencias = sum(1 for s in servicios if s["estado"] == "advertencia")
+    total_errores = sum(1 for s in servicios if s["estado"] == "error")
+
+    if total_errores > 0:
+        estado_general = "error"
+        estado_general_label = "Error"
+        estado_general_detalle = "Se detectaron fallas en uno o más módulos."
+    elif total_advertencias > 0:
+        estado_general = "advertencia"
+        estado_general_label = "En revisión"
+        estado_general_detalle = "Hay módulos con advertencias."
+    else:
+        estado_general = "activo"
+        estado_general_label = "Activo"
+        estado_general_detalle = "Sistema funcionando correctamente."
+
+    mapa = {s["nombre"]: s for s in servicios}
+
+    def get_servicio(nombre):
+        return mapa.get(nombre, {"nombre": nombre, "estado": "error", "detalle": "Sin datos."})
+
+    db_data = get_servicio("Base de datos")
+    openai_data = get_servicio("IA / OpenAI")
+    voz_data = get_servicio("Reconocimiento de voz")
+    scanner_data = get_servicio("Escáner de medicamentos")
+    alarmas_data = get_servicio("Sistema de alarmas")
+    push_data = get_servicio("Notificaciones push")
+
+    # --- DATOS PARA GRÁFICA 1: ESTADO DE MÓDULOS ---
+    grafica_modulos = {
+        "labels": ["Activos", "Advertencias", "Errores"],
+        "values": [total_activos, total_advertencias, total_errores],
+    }
+
+    # --- DATOS PARA GRÁFICA 2: ACTIVIDAD DEL SISTEMA ---
+    grafica_actividad = {
+        "labels": ["Voz", "Escáner", "Alarmas", "Push"],
+        "values": [
+            int(voz_data.get("total_24h", 0) or 0),
+            int(scanner_data.get("capturas_24h", 0) or 0),
+            int(alarmas_data.get("disparadas_24h", 0) or 0),
+            int(push_data.get("suscripciones", 0) or 0),
+        ],
+    }
+
+    return JsonResponse({
+        "ok": True,
+        "revision": revision.strftime("%d/%m/%Y %H:%M"),
+        "estado_general": estado_general,
+        "estado_general_label": estado_general_label,
+        "estado_general_detalle": estado_general_detalle,
+        "total_activos": total_activos,
+        "total_advertencias": total_advertencias,
+        "total_errores": total_errores,
+        "servicios": {
+            "base_datos": db_data,
+            "openai": openai_data,
+            "voz": voz_data,
+            "scanner": scanner_data,
+            "alarmas": alarmas_data,
+            "push": push_data,
+        },
+        "graficas": {
+            "modulos": grafica_modulos,
+            "actividad": grafica_actividad,
+        }
+    })
+
+def _sincronizar_usuario_django_activo(nombre, correo, activo):
+    """
+    Busca el User de Django relacionado y actualiza su campo is_active.
+    """
+    try:
+        user = None
+        correo_norm = (correo or "").strip().lower()
+        nombre_norm = (nombre or "").strip()
+
+        if correo_norm:
+            user = User.objects.filter(
+                Q(username__iexact=correo_norm) | Q(email__iexact=correo_norm)
+            ).first()
+
+        if not user and nombre_norm:
+            user = User.objects.filter(
+                Q(first_name__iexact=nombre_norm) | Q(username__iexact=nombre_norm)
+            ).first()
+
+        if user:
+            user.is_active = bool(activo)
+            user.save(update_fields=["is_active"])
+            print(f"✅ Django user sincronizado: {user.username} -> is_active={activo}")
+        else:
+            print(f"⚠️ No se encontró usuario Django para sincronizar: {nombre_norm} / {correo_norm}")
+
+    except Exception as e:
+        print(f"❌ Error sincronizando usuario Django: {e}")

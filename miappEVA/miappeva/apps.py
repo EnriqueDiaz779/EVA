@@ -2,6 +2,14 @@ from django.apps import AppConfig
 import os
 import sys
 
+
+class MiappevaConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'miappeva'
+
+    def ready(self):
+        import miappeva.signals  # Importa los signals para crear perfiles automáticamente
+
 class MiappevaConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'miappeva'
