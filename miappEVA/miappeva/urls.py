@@ -42,11 +42,20 @@ urlpatterns = [
     path("chat/visto", views.chat_post_marcar_visto, name="chat_post_marcar_visto"),
 
     #--------flutter-----------#
-    path("api/v1/auth/register/cuidador/", views.api_v1_register_cuidador),
-    path("api/v1/auth/register/adulto/", views.api_v1_register_adulto),
-    path("api/v1/auth/login/", views.api_v1_login),
-    path("api/v1/auth/me/", views.api_v1_me),
-    path("api/v1/auth/logout/", views.api_v1_logout),
+    path("api/v1/login/", views.api_v1_login, name="api_v1_login"),
+    path("api/v1/login-nombre/", views.api_v1_login_nombre, name="api_v1_login_nombre"),
+    path("api/v1/inicio/", views.api_v1_inicio, name="api_v1_inicio"),
+    path("api/v1/voz/procesar/", views.api_v1_registrar_orden_openai, name="api_v1_registrar_orden_openai"),
+    path("api/v1/voz/registrar-orden/", views.api_v1_registrar_orden_openai, name="api_v1_registrar_orden_openai"),
+    path("api/v1/medicamentos/analizar/", views.api_v1_medicamentos_analizar, name="api_v1_medicamentos_analizar"),
+    path("api/v1/alarmas/pendientes/", views.api_v1_alarmas_pendientes, name="api_v1_alarmas_pendientes"),
+    path("api/v1/alarmas/marcar-entregada/", views.api_v1_marcar_entregada, name="api_v1_marcar_entregada"),
+    path("api/v1/me/", views.api_v1_me, name="api_v1_me"),
+    path("api/v1/logout/", views.api_v1_logout, name="api_v1_logout"),
+    path("api/v1/register/adulto/", views.api_v1_register_adulto, name="api_v1_register_adulto"),
+    path("api/v1/register/cuidador/", views.api_v1_register_cuidador, name="api_v1_register_cuidador"),
+    path('api/v1/interfaz-cuidador/', views.api_v1_interfaz_cuidador, name='api_v1_interfaz_cuidador'),
+    path('vincular-adulto-por-codigo/', views.vincular_adulto_por_codigo, name='vincular_adulto_por_codigo'),
 
     # --- Órdenes de voz / OpenAI ---
     path("registrar-openai/", views.registrar_orden_openai, name="registrar_orden_openai"),

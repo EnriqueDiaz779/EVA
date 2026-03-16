@@ -1182,16 +1182,20 @@ def _enviar_webpush_a_usuario(django_user, payload: dict) -> int:
 
 
 #------vincular adulto por codigo-------#
-@login_required
+@csrf_exempt
 @require_POST
 def vincular_adulto_por_codigo(request):
-    ident = (request.user.username or "").strip()
-    mysql_user = verificar_usuario_en_bd(ident)
+    username = (request.POST.get("username") or "").strip()
+    if not username:
+        return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
+
+    mysql_user = verificar_usuario_en_bd(username)
     if not mysql_user or mysql_user.get("tipo") != "cuidador":
         return JsonResponse({"ok": False, "error": "Solo cuidadores pueden vincular."}, status=403)
 
     cuidador_id = mysql_user["id"]
     codigo = (request.POST.get("codigo") or "").strip().upper()
+
     if not codigo:
         return JsonResponse({"ok": False, "error": "Ingresa el código único."}, status=400)
 
@@ -1204,31 +1208,17 @@ def vincular_adulto_por_codigo(request):
     except ValueError as ve:
         code = str(ve)
         if code == "YA_VINCULADO":
-           return JsonResponse({"ok": False, "error": "Ya tienes un adulto vinculado."}, status=409)
+            return JsonResponse({"ok": False, "error": "Ya tienes un adulto vinculado."}, status=409)
         if code == "ADULTO_CON_OTRO_CUIDADOR":
-           return JsonResponse({"ok": False, "error": "Este adulto ya está vinculado con otro cuidador."}, status=409)
+            return JsonResponse({"ok": False, "error": "Este adulto ya está vinculado con otro cuidador."}, status=409)
         return JsonResponse({"ok": False, "error": "No se pudo vincular."}, status=500)
 
-    meds = []
-    adulto_django = _django_user_from_mysql_adulto(adulto["nombre"], adulto.get("correo") or "")
-    if adulto_django:
-        qs = (
-            MedicamentoReconocido.objects.filter(usuario=adulto_django)
-            .order_by("-creado")[:10]
-        )
-        meds = [
-            {
-                "nombre": (m.nombre_detectado or ""),
-                "descripcion": (m.descripcion or ""),
-                "confianza": float(m.confianza or 0.0),
-            }
-            for m in qs
-        ]
-
     return JsonResponse({
-      "ok": True,
-      "adulto": {"id": adulto["id"], "nombre": adulto["nombre"]},
-      "medicamentos": meds
+        "ok": True,
+        "adulto": {
+            "id": adulto["id"],
+            "nombre": adulto["nombre"],
+        }
     })
 
 #----------cambiar adulto mayor------#
@@ -1555,21 +1545,12 @@ def registrar_orden_openai(request):
     # Si la intención es "alarma", crea la alarma en BD aquí mismo
     alarm_created = False
     if intent == "alarma":
-        hora = (meta.get("hora") or "").strip()
-        mensaje = (meta.get("mensaje") or "¡Alarma programada correctamente!").strip()
-        if hora:
-            try:
-                Alarma.objects.create(
-                    usuario=request.user,
-                    fecha=None,   # se asume hoy; si luego quieres fecha, la añadimos desde meta
-                    hora=hora,
-                    mensaje=mensaje,
-                    activa=True
-                )
-                alarm_created = True
-                logger.info(f"🟢 Alarma creada via IA: {hora} - {mensaje}")
-            except Exception as e:
-                logger.exception(f"Error creando alarma: {e}")
+        try:
+            alarm_created = _crear_alarma_desde_meta(request.user, meta)
+            if alarm_created:
+                logger.info(f"🟢 Alarma creada vía IA: meta={meta}")
+        except Exception as e:
+            logger.exception(f"Error creando alarma: {e}")
 
     return JsonResponse({
         "ok": True,
@@ -1583,6 +1564,146 @@ def registrar_orden_openai(request):
         "meta": meta,
         "alarm_created": alarm_created,
     })
+
+def _mapear_dia_a_abrev(valor):
+    if valor is None:
+        return None
+
+    if isinstance(valor, int):
+        mapa_num = {
+            1: "lun",
+            2: "mar",
+            3: "mie",
+            4: "jue",
+            5: "vie",
+            6: "sab",
+            7: "dom",
+        }
+        return mapa_num.get(valor)
+
+    txt = unicodedata.normalize("NFKD", str(valor).strip().lower())
+    txt = txt.encode("ascii", "ignore").decode("ascii")
+    txt = re.sub(r"[^a-z]", "", txt)
+
+    mapa = {
+        "lun": "lun",
+        "lunes": "lun",
+        "mar": "mar",
+        "martes": "mar",
+        "mie": "mie",
+        "miercoles": "mie",
+        "jue": "jue",
+        "jueves": "jue",
+        "vie": "vie",
+        "viernes": "vie",
+        "sab": "sab",
+        "sábado": "sab",
+        "sabado": "sab",
+        "dom": "dom",
+        "domingo": "dom",
+    }
+    return mapa.get(txt)
+
+
+def _normalizar_dias_meta(meta):
+    """
+    Recibe meta de OpenAI y devuelve string listo para guardar en Django:
+    'lun,mar,vie'
+    """
+    if not isinstance(meta, dict):
+        return ""
+
+    raw = (
+        meta.get("dias")
+        or meta.get("dias_semana")
+        or meta.get("dia")
+        or meta.get("repetir")
+        or ""
+    )
+
+    items = []
+
+    if isinstance(raw, list):
+        items = raw
+    elif isinstance(raw, str) and raw.strip():
+        items = re.split(r"[,;/]+", raw.strip())
+    else:
+        items = []
+
+    normalizados = []
+    seen = set()
+
+    for item in items:
+        dia = _mapear_dia_a_abrev(item)
+        if dia and dia not in seen:
+            seen.add(dia)
+            normalizados.append(dia)
+
+    return ",".join(normalizados)
+
+
+def _normalizar_fecha_meta(meta):
+    """
+    Devuelve objeto date o None.
+    """
+    if not isinstance(meta, dict):
+        return None
+
+    fecha_raw = meta.get("fecha")
+    fecha = _parse_fecha(fecha_raw)
+
+    if fecha:
+        return fecha
+
+    relativo = str(meta.get("fecha_relativa") or meta.get("dia_relativo") or "").strip().lower()
+    hoy = timezone.localdate()
+
+    if relativo == "hoy":
+        return hoy
+    if relativo == "mañana" or relativo == "manana":
+        return hoy + timedelta(days=1)
+
+    return None
+
+
+def _normalizar_hora_meta(meta):
+    """
+    Devuelve objeto time o None.
+    """
+    if not isinstance(meta, dict):
+        return None
+
+    hora_raw = meta.get("hora")
+    hora = _parse_hora(hora_raw)
+    return hora
+
+def _crear_alarma_desde_meta(django_user, meta):
+    if not isinstance(meta, dict):
+        return False
+
+    hora_obj = _normalizar_hora_meta(meta)
+    if not hora_obj:
+        return False
+
+    mensaje = str(meta.get("mensaje") or "¡Alarma programada correctamente!").strip()
+    dias_str = _normalizar_dias_meta(meta)
+
+    # Si hay días recurrentes, NO guardar fecha fija.
+    if dias_str:
+        fecha_obj = None
+    else:
+        fecha_obj = _normalizar_fecha_meta(meta)
+
+    Alarma.objects.create(
+        usuario=django_user,
+        fecha=fecha_obj,
+        hora=hora_obj,
+        mensaje=mensaje,
+        dias=dias_str,
+        activa=True,
+        entregada=False,
+    )
+    return True
 
 #------pendientes------#
 @login_required
@@ -1897,6 +2018,72 @@ def _extraer_json_seguro(texto):
         return {}
 
 #--------analizar imagen (escaner)-----------""
+def analizar_imagen_openai_bytes(image_bytes):
+    """
+    Analiza una imagen de medicamento desde memoria (bytes), sin guardar archivo.
+    Devuelve:
+    - nombre
+    - para_que_sirve
+    - confianza
+    - texto bruto/debug
+    """
+    try:
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+        max_side = 1280
+        w, h = img.size
+        scale = min(max_side / float(max(w, h)), 1.0)
+        if scale < 1.0:
+            img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85, optimize=True)
+        b64 = base64.b64encode(buf.getvalue()).decode()
+
+        prompt = (
+            "Eres un asistente experto en farmacología. "
+            "Analiza la foto de un medicamento (empaque o caja) y devuelve SOLO un JSON claro en español "
+            "con la siguiente estructura:\n\n"
+            '{'
+            '"nombre": "nombre exacto que aparece en el empaque", '
+            '"para_que_sirve": "explicación breve (máximo 2 oraciones) sobre su uso o propósito terapéutico", '
+            '"confianza": 0.xx'
+            '}\n\n'
+            "Si no puedes reconocer el medicamento, deja nombre y para_que_sirve vacíos y pon confianza baja."
+        )
+
+        resp = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "Eres conciso y exacto."},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
+                    ]
+                }
+            ],
+            temperature=0.2,
+        )
+
+        texto = (resp.choices[0].message.content or "").strip()
+        data = _extraer_json_seguro(texto)
+
+        nombre = str(data.get("nombre", "")).strip()
+        para_que_sirve = str(data.get("para_que_sirve", "")).strip()
+
+        try:
+            confianza = float(data.get("confianza", 0.0) or 0.0)
+        except Exception:
+            confianza = 0.0
+
+        return nombre, para_que_sirve, texto
+
+    except Exception as e:
+        print(f"❌ ERROR en OpenAI (bytes): {e}")
+        return "", "", 0.0, f"ERROR_OPENAI: {e}"
+
 def analizar_imagen_openai(image_path: str):
     """
     Envía la imagen a OpenAI (modelo con visión) pidiendo un JSON con:
@@ -3231,46 +3418,6 @@ def _mysql_get_usuario_por_correo(correo):
         }
 
 @csrf_exempt
-def api_v1_register_cuidador(request):
-    if request.method != "POST":
-        return JsonResponse({"ok": False, "error": "Método no permitido"}, status=405)
-
-    data = _json_body(request)
-    nombre_completo = (data.get("nombre_completo") or "").strip()
-    password = data.get("password") or ""
-    correo = (data.get("correo") or "").strip().lower()
-    telefono = (data.get("telefono") or "").strip()
-
-    if not nombre_completo or not password or not correo:
-        return JsonResponse({"ok": False, "error": "Faltan campos (nombre_completo, correo, password)."}, status=400)
-
-    # 1) Evitar duplicado en MySQL por correo (UNIQUE)
-    if _mysql_get_usuario_por_correo(correo):
-        return JsonResponse({"ok": False, "error": "Ese correo ya está registrado."}, status=409)
-
-    # 2) En Django usamos el correo como username (ideal para Flutter)
-    if User.objects.filter(username=correo).exists():
-        return JsonResponse({"ok": False, "error": "Ese usuario ya existe."}, status=409)
-
-    # 3) Crear en Django
-    user = User.objects.create_user(username=correo, password=password, first_name=nombre_completo)
-
-    # 4) Insertar en MySQL
-    try:
-        _mysql_insert_usuario(nombre_completo, password, "cuidador", correo=correo, telefono=telefono)
-    except Exception as e:
-        user.delete()
-        return JsonResponse({"ok": False, "error": f"No se pudo registrar en MySQL: {e}"}, status=500)
-
-    # 5) Iniciar sesión (sesión/cookies) — útil también en web
-    auth_login(request, user)
-
-    return JsonResponse({
-        "ok": True,
-        "user": {"username": user.username, "nombre_completo": nombre_completo, "tipo": "cuidador", "correo": correo, "telefono": telefono}
-    })
-
-@csrf_exempt
 def api_v1_register_adulto(request):
     if request.method != "POST":
         return JsonResponse({"ok": False, "error": "Método no permitido"}, status=405)
@@ -3314,24 +3461,720 @@ def api_v1_login(request):
     password = data.get("password") or ""
 
     if not correo or not password:
-        return JsonResponse({"ok": False, "error": "Faltan campos (correo/username, password)."}, status=400)
+        return JsonResponse(
+            {"ok": False, "error": "Faltan campos (correo/username, password)."},
+            status=400
+        )
+
+    mysql_user = _mysql_get_usuario_por_correo(correo)
+    if not mysql_user:
+        return JsonResponse({"ok": False, "error": "Usuario no encontrado."}, status=404)
+
+    # si quieres validar activo desde MySQL, agrega activo al helper
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT activo FROM Usuarios WHERE correo=%s LIMIT 1",
+            [correo]
+        )
+        row = cursor.fetchone()
+        if row and not bool(row[0]):
+            return JsonResponse(
+                {"ok": False, "error": "Tu cuenta está desactivada."},
+                status=403
+            )
 
     user_auth = authenticate(request, username=correo, password=password)
     if user_auth is None:
         return JsonResponse({"ok": False, "error": "Credenciales incorrectas."}, status=401)
 
     auth_login(request, user_auth)
-
-    # opcional: leer tipo desde MySQL por correo
-    mysql_user = _mysql_get_usuario_por_correo(correo)
-    tipo = (mysql_user.get("tipo") if mysql_user else "desconocido")
-    nombre = (mysql_user.get("nombre_completo") if mysql_user else (user_auth.first_name or ""))
+    registrar_login_en_db(correo, request)
 
     return JsonResponse({
         "ok": True,
-        "user": {"username": correo, "nombre_completo": nombre, "tipo": tipo, "correo": correo}
+        "user": {
+            "username": correo,
+            "nombre_completo": mysql_user.get("nombre_completo"),
+            "tipo": mysql_user.get("tipo"),
+            "correo": mysql_user.get("correo"),
+            "telefono": mysql_user.get("telefono"),
+        }
     })
 
+@csrf_exempt
+def api_v1_login_nombre(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Método no permitido"}, status=405)
+
+    data = _json_body(request)
+    nombre_original = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+
+    if not nombre_original or not password:
+        return JsonResponse({"ok": False, "error": "Escribe tu nombre y tu contraseña."}, status=400)
+
+    username = nombre_original.lower()
+    usuario_mysql = verificar_usuario_en_bd(nombre_original)
+
+    if usuario_mysql:
+        if not usuario_mysql.get("activo", True):
+            return JsonResponse({"ok": False, "error": "Tu cuenta está desactivada."}, status=403)
+
+        user = User.objects.filter(username=username).first()
+
+        if user is None:
+            user = User.objects.create_user(
+                username=username,
+                password=password,
+                first_name=usuario_mysql['nombre']
+            )
+
+        user_auth = authenticate(request, username=username, password=password)
+        if user_auth is None:
+            return JsonResponse({"ok": False, "error": "Contraseña incorrecta."}, status=401)
+
+        auth_login(request, user_auth)
+        registrar_login_en_db(username, request)
+
+        tipo_usuario = (usuario_mysql.get('tipo') or '').strip().lower()
+
+        return JsonResponse({
+            "ok": True,
+            "user": {
+                "username": username,
+                "nombre_completo": usuario_mysql.get("nombre"),
+                "tipo": tipo_usuario,
+                "correo": usuario_mysql.get("correo"),
+                "telefono": usuario_mysql.get("telefono"),
+            }
+        })
+
+    user = User.objects.filter(username=username).first()
+
+    if user is None:
+        user = User.objects.create_user(
+            username=username,
+            password=password,
+            first_name=nombre_original
+        )
+        adulto_id = registrar_usuario_en_db(nombre_original, password, "adulto")
+        if adulto_id is None:
+            user.delete()
+            return JsonResponse(
+                {"ok": False, "error": "Error al registrar el usuario en la base de datos."},
+                status=500
+            )
+
+        auth_login(request, user)
+        registrar_login_en_db(nombre_original, request)
+
+        return JsonResponse({
+            "ok": True,
+            "user": {
+                "username": username,
+                "nombre_completo": nombre_original,
+                "tipo": "adulto",
+            }
+        })
+
+    user_auth = authenticate(request, username=username, password=password)
+    if user_auth is None:
+        return JsonResponse({"ok": False, "error": "Contraseña incorrecta."}, status=401)
+
+    auth_login(request, user_auth)
+    registrar_login_en_db(nombre_original, request)
+
+    return JsonResponse({
+        "ok": True,
+        "user": {
+            "username": username,
+            "nombre_completo": user.first_name or nombre_original,
+            "tipo": "adulto",
+        }
+    })
+
+@csrf_exempt
+def api_v1_register_cuidador(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Método no permitido"}, status=405)
+
+    data = _json_body(request)
+    nombre_completo = (data.get("nombre_completo") or "").strip()
+    password = data.get("password") or ""
+    correo = (data.get("correo") or "").strip().lower()
+    telefono = (data.get("telefono") or "").strip()
+    pago_completado = bool(data.get("pago_completado"))
+
+    if not nombre_completo or not password or not correo or not telefono:
+        return JsonResponse({
+            "ok": False,
+            "error": "Faltan campos (nombre_completo, correo, telefono, password)."
+        }, status=400)
+
+    if not pago_completado:
+        return JsonResponse({
+            "ok": False,
+            "error": "Debes completar el pago para registrarte."
+        }, status=400)
+
+    if _mysql_get_usuario_por_correo(correo):
+        return JsonResponse({"ok": False, "error": "Ese correo ya está registrado."}, status=409)
+
+    if User.objects.filter(username=correo).exists():
+        return JsonResponse({"ok": False, "error": "Ese usuario ya existe."}, status=409)
+
+    user = User.objects.create_user(
+        username=correo,
+        password=password,
+        first_name=nombre_completo
+    )
+
+    try:
+        cuidador_id = _mysql_insert_usuario(
+            nombre_completo,
+            password,
+            "cuidador",
+            correo=correo,
+            telefono=telefono
+        )
+    except Exception as e:
+        user.delete()
+        return JsonResponse({"ok": False, "error": f"No se pudo registrar en MySQL: {e}"}, status=500)
+
+    try:
+        ok_membresia = guardar_membresia(cuidador_id)
+        if not ok_membresia:
+            user.delete()
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM Usuarios WHERE Id_Usuario=%s", [cuidador_id])
+            connection.commit()
+            return JsonResponse({"ok": False, "error": "No se pudo guardar la membresía."}, status=500)
+    except Exception as e:
+        user.delete()
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM Usuarios WHERE Id_Usuario=%s", [cuidador_id])
+        connection.commit()
+        return JsonResponse({"ok": False, "error": f"Error guardando membresía: {e}"}, status=500)
+
+    return JsonResponse({
+        "ok": True,
+        "message": "Cuidador registrado con membresía activa.",
+        "user": {
+            "username": user.username,
+            "nombre_completo": nombre_completo,
+            "tipo": "cuidador",
+            "correo": correo,
+            "telefono": telefono,
+        }
+    })
+
+@csrf_exempt
+def api_v1_inicio(request):
+    try:
+        data = _json_body(request) if request.method == "POST" else {}
+        username = (request.GET.get("username") or data.get("username") or "").strip()
+
+        if not username:
+            return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
+
+        usuario_mysql = verificar_usuario_en_bd(username)
+        if not usuario_mysql:
+            return JsonResponse({"ok": False, "error": "Usuario no encontrado."}, status=404)
+
+        nombre = usuario_mysql.get("nombre") or username
+        codigo_unico = None
+        es_premium = False
+        esta_vinculado = False
+
+        # Buscar user Django para obtener órdenes
+        django_user = User.objects.filter(username__iexact=username.lower()).first()
+
+        if not django_user and usuario_mysql.get("correo"):
+            django_user = User.objects.filter(username__iexact=usuario_mysql.get("correo")).first()
+
+        if not django_user and usuario_mysql.get("nombre"):
+            django_user = User.objects.filter(first_name__iexact=usuario_mysql.get("nombre")).first()
+
+        ultimas = []
+        if django_user:
+            ordenes = OrdenVoz.objects.filter(usuario=django_user).order_by("-creado")[:5]
+            ultimas = [
+                {
+                    "id": o.id,
+                    "texto": o.texto or "",
+                    "respuesta": o.respuesta or "",
+                    "fecha": timezone.localtime(o.creado).strftime("%d/%m %H:%M"),
+                }
+                for o in ordenes
+            ]
+
+        if usuario_mysql.get("tipo") == "adulto":
+            usuario_id = int(usuario_mysql.get("id") or 0)
+            if usuario_id:
+                codigo_unico = _mysql_get_or_create_codigo_unico(usuario_id)
+                es_premium = _mysql_adulto_premium_activo(usuario_id)
+                vinculo = _mysql_get_vinculo_por_adulto(usuario_id)
+                esta_vinculado = bool(vinculo and vinculo.get("activo"))
+
+        return JsonResponse({
+            "ok": True,
+            "nombre": nombre,
+            "codigo_unico": codigo_unico,
+            "es_premium": es_premium,
+            "esta_vinculado": esta_vinculado,
+            "ultimas": ultimas,
+        })
+
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+def _procesar_orden_openai_para_usuario(django_user, texto, asr_conf=None):
+    texto = (texto or "").strip().lower()
+
+    # CASO 1: No se detectó voz
+    if not texto:
+        orden = OrdenVoz.objects.create(
+            usuario=django_user,
+            texto="(vacío)",
+            respuesta="No pude escuchar nada. ¿Podrías repetir cerca del micrófono?",
+            intent="no_entendido",
+            meta={"reason": "asr_empty", "asr_conf": asr_conf, "provider": "openai"},
+        )
+        return {
+            "ok": True,
+            "id": orden.id,
+            "fecha": timezone.localtime(orden.creado).strftime("%d/%m %H:%M"),
+            "texto": "",
+            "respuesta": orden.respuesta,
+            "intent": orden.intent,
+            "confidence": 0.0,
+            "no_entendido": True,
+            "meta": {},
+            "alarm_created": False,
+        }
+
+    palabras_cancelacion = ["cancelar", "anular", "me equivoqué", "olvida eso", "no eso", "borra eso"]
+    if any(p in texto for p in palabras_cancelacion):
+        respuesta_cancelacion = "Está bien, he cancelado la orden. Puedes decirme otra cosa cuando quieras."
+        orden = OrdenVoz.objects.create(
+            usuario=django_user,
+            texto=texto,
+            respuesta=respuesta_cancelacion,
+            intent="cancelacion",
+            meta={"reason": "user_cancelled", "asr_conf": asr_conf, "provider": "openai"},
+        )
+        return {
+            "ok": True,
+            "id": orden.id,
+            "fecha": timezone.localtime(orden.creado).strftime("%d/%m %H:%M"),
+            "texto": texto,
+            "respuesta": respuesta_cancelacion,
+            "intent": "cancelacion",
+            "confidence": 1.0,
+            "cancelado": True,
+            "meta": {},
+            "alarm_created": False,
+        }
+
+    palabras_clave_medicamentos = [
+        "medicamento", "pastilla", "tableta", "jarabe", "inyección", "cápsula",
+        "medicina", "tratamiento", "dosis", "efecto", "efectos secundarios",
+        "contraindicaciones", "cómo se toma", "sirve para", "farmacia"
+    ]
+
+    nombres_medicamentos = [
+        "paracetamol", "ibuprofeno", "omeprazol", "amoxicilina", "loratadina",
+        "diclofenaco", "ambroxol", "naproxeno", "azitromicina", "metformina",
+        "losartán", "salbutamol", "prednisona", "vitamina", "antibiótico"
+    ]
+
+    palabras_alarmas = [
+        "alarma", "recordar", "recordatorio", "avísame", "notificación",
+        "despertar", "pon una alarma", "a las", "programa una alarma", "crear alarma"
+    ]
+
+    es_alarma = any(p in texto for p in palabras_alarmas)
+    contiene_medicamento_nombre = any(m in texto for m in nombres_medicamentos)
+    es_medicamento = contiene_medicamento_nombre or (
+        any(p in texto for p in palabras_clave_medicamentos) and
+        any(m in texto for m in nombres_medicamentos)
+    )
+
+    if not (es_medicamento or es_alarma):
+        respuesta_fuera = (
+            "Solo puedo ayudarte con medicamentos o alarmas. "
+            "Por ejemplo: ¿Para qué sirve el ambroxol? o Pon una alarma a las ocho de la mañana."
+        )
+        orden = OrdenVoz.objects.create(
+            usuario=django_user,
+            texto=texto,
+            respuesta=respuesta_fuera,
+            intent="fuera_de_tema",
+            meta={"reason": "out_of_scope", "asr_conf": asr_conf, "provider": "openai"},
+        )
+        return {
+            "ok": True,
+            "id": orden.id,
+            "fecha": timezone.localtime(orden.creado).strftime("%d/%m %H:%M"),
+            "texto": texto,
+            "respuesta": respuesta_fuera,
+            "intent": "fuera_de_tema",
+            "confidence": 1.0,
+            "no_entendido": True,
+            "meta": {},
+            "alarm_created": False,
+        }
+
+    result = preguntar_openai(texto)
+    respuesta_ia = (result.get("respuesta") or "").strip()
+    intent = result.get("intent", "desconocido")
+    ia_conf = float(result.get("confidence", 0.0))
+    meta = result.get("meta") or {}
+
+    if not respuesta_ia:
+        orden = OrdenVoz.objects.create(
+            usuario=django_user,
+            texto=texto,
+            respuesta="No entendí lo que dijiste, ¿puedes repetirlo con otras palabras?",
+            intent="no_entendido",
+            meta={"reason": "empty_ai_response", "asr_conf": asr_conf, "provider": "openai"},
+        )
+        return {
+            "ok": True,
+            "id": orden.id,
+            "fecha": timezone.localtime(orden.creado).strftime("%d/%m %H:%M"),
+            "texto": texto,
+            "respuesta": orden.respuesta,
+            "intent": orden.intent,
+            "confidence": 0.0,
+            "no_entendido": True,
+            "meta": {},
+            "alarm_created": False,
+        }
+
+    orden = OrdenVoz.objects.create(
+        usuario=django_user,
+        texto=texto,
+        respuesta=respuesta_ia,
+        intent=intent,
+        meta={"ia_conf": ia_conf, "asr_conf": asr_conf, "provider": "openai", "meta": meta},
+    )
+
+    alarm_created = False
+
+    if intent == "alarma":
+        try:
+            alarm_created = _crear_alarma_desde_meta(django_user, meta)
+            if alarm_created:
+                logger.info(f"🟢 Alarma creada vía IA: meta={meta}")
+        except Exception as e:
+            logger.exception(f"❌ Error creando alarma: {e}")
+
+    return {
+        "ok": True,
+        "id": orden.id,
+        "fecha": timezone.localtime(orden.creado).strftime("%d/%m %H:%M"),
+        "texto": orden.texto,
+        "respuesta": orden.respuesta,
+        "intent": intent,
+        "confidence": ia_conf,
+        "no_entendido": False,
+        "meta": meta,
+        "alarm_created": alarm_created,
+    }
+
+@csrf_exempt
+def api_v1_registrar_orden_openai(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Método no permitido"}, status=405)
+
+    data = _json_body(request)
+    username = (data.get("username") or "").strip()
+    texto = (data.get("texto") or "").strip()
+    asr_conf = data.get("asr_conf")
+
+    try:
+        asr_conf = float(asr_conf) if asr_conf is not None else None
+    except Exception:
+        asr_conf = None
+
+    if not username:
+        return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
+
+    usuario_mysql = verificar_usuario_en_bd(username)
+    if not usuario_mysql:
+        return JsonResponse({"ok": False, "error": "Usuario no encontrado."}, status=404)
+
+    django_user = User.objects.filter(username__iexact=username.lower()).first()
+
+    if not django_user and usuario_mysql.get("correo"):
+        django_user = User.objects.filter(username__iexact=usuario_mysql["correo"].lower()).first()
+
+    if not django_user and usuario_mysql.get("nombre"):
+        django_user = User.objects.filter(first_name__iexact=usuario_mysql["nombre"]).first()
+
+    if not django_user:
+        return JsonResponse({"ok": False, "error": "No encontré el usuario Django."}, status=404)
+
+    try:
+        resultado = _procesar_orden_openai_para_usuario(django_user, texto, asr_conf)
+        return JsonResponse(resultado)
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+
+@csrf_exempt
+def api_v1_alarmas_pendientes(request):
+    username = (request.GET.get("username") or "").strip()
+    if not username:
+        return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
+
+    usuario_mysql = verificar_usuario_en_bd(username)
+    if not usuario_mysql:
+        return JsonResponse({"ok": False, "error": "Usuario no encontrado."}, status=404)
+
+    django_user = User.objects.filter(username__iexact=username.lower()).first()
+
+    if not django_user and usuario_mysql.get("correo"):
+        django_user = User.objects.filter(username__iexact=usuario_mysql["correo"].lower()).first()
+
+    if not django_user and usuario_mysql.get("nombre"):
+        django_user = User.objects.filter(first_name__iexact=usuario_mysql["nombre"]).first()
+
+    if not django_user:
+        return JsonResponse({"ok": False, "error": "No encontré el usuario Django."}, status=404)
+
+    ahora = timezone.localtime()
+
+    def _norm_dia(token):
+        txt = unicodedata.normalize("NFKD", str(token or ""))
+        txt = txt.encode("ascii", "ignore").decode("ascii").lower().strip()
+        txt = re.sub(r"[^a-z]", "", txt)
+        return txt[:3]
+
+    def _aplica_hoy(alarma):
+        if alarma.fecha and alarma.fecha != ahora.date():
+            return False
+        raw = (alarma.dias or "").strip()
+        if not raw:
+            return True
+
+        hoy_tokens = {
+            0: {"lun", "mon"},
+            1: {"mar", "tue"},
+            2: {"mie", "wed"},
+            3: {"jue", "thu"},
+            4: {"vie", "fri"},
+            5: {"sab", "sat"},
+            6: {"dom", "sun"},
+        }[ahora.weekday()]
+        dias = {_norm_dia(x) for x in re.split(r"[,;/\s]+", raw) if _norm_dia(x)}
+        return bool(dias & hoy_tokens)
+
+    alarmas = (
+        Alarma.objects
+        .filter(usuario=django_user, activa=True)
+        .filter(Q(fecha__isnull=True) | Q(fecha=ahora.date()))
+        .order_by("hora")
+    )
+
+    data = []
+    for a in alarmas:
+        if not _aplica_hoy(a):
+            continue
+
+        if a.disparada_at and (ahora - a.disparada_at).total_seconds() < 90:
+            continue
+
+        base_dt = timezone.make_aware(
+            datetime.combine(ahora.date(), a.hora),
+            timezone.get_current_timezone(),
+        )
+
+        delta = (ahora - base_dt).total_seconds()
+        if delta < 0 or delta > 40:
+            continue
+
+        if a.disparada_at and (ahora - a.disparada_at).total_seconds() < 300:
+            continue
+
+        if abs((base_dt - ahora).total_seconds()) > 75:
+            continue
+
+        a.disparada_at = timezone.now()
+        a.save(update_fields=["disparada_at"])
+
+        data.append({
+            "id": a.id,
+            "mensaje": a.mensaje,
+            "hora": a.hora.strftime("%H:%M"),
+        })
+
+    return JsonResponse({"ok": True, "alarmas": data})
+
+
+@csrf_exempt
+def api_v1_marcar_entregada(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Método no permitido"}, status=405)
+
+    data = _json_body(request)
+    username = (data.get("username") or "").strip()
+    alarma_id = data.get("id")
+
+    if not username or not alarma_id:
+        return JsonResponse({"ok": False, "error": "Username e id requeridos."}, status=400)
+
+    usuario_mysql = verificar_usuario_en_bd(username)
+    if not usuario_mysql:
+        return JsonResponse({"ok": False, "error": "Usuario no encontrado."}, status=404)
+
+    django_user = User.objects.filter(username__iexact=username.lower()).first()
+
+    if not django_user and usuario_mysql.get("correo"):
+        django_user = User.objects.filter(username__iexact=usuario_mysql["correo"].lower()).first()
+
+    if not django_user and usuario_mysql.get("nombre"):
+        django_user = User.objects.filter(first_name__iexact=usuario_mysql["nombre"]).first()
+
+    if not django_user:
+        return JsonResponse({"ok": False, "error": "No encontré el usuario Django."}, status=404)
+
+    try:
+        a = Alarma.objects.get(id=alarma_id, usuario=django_user)
+
+        dias = (a.dias or "").strip()
+        if not dias and a.fecha:
+            a.entregada = True
+            a.activa = False
+        else:
+            a.entregada = False
+            a.disparada_at = timezone.now()
+
+        a.save()
+        return JsonResponse({"ok": True})
+    except Alarma.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "No existe"}, status=404)
+
+@csrf_exempt
+def api_v1_medicamentos_analizar(request):
+    """
+    Endpoint para Flutter:
+    - recibe multipart/form-data
+    - campos esperados:
+        - username
+        - foto
+    No guarda imagen ni captura temporal.
+    """
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Método no permitido"}, status=405)
+
+    try:
+        username = (request.POST.get("username") or "").strip()
+        if not username:
+            return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
+
+        usuario_mysql = verificar_usuario_en_bd(username)
+        if not usuario_mysql:
+            return JsonResponse({"ok": False, "error": "Usuario no encontrado."}, status=404)
+
+        django_user = User.objects.filter(username__iexact=username.lower()).first()
+
+        if not django_user and usuario_mysql.get("correo"):
+            django_user = User.objects.filter(username__iexact=usuario_mysql["correo"].lower()).first()
+
+        if not django_user and usuario_mysql.get("nombre"):
+            django_user = User.objects.filter(first_name__iexact=usuario_mysql["nombre"]).first()
+
+        if not django_user:
+            return JsonResponse({"ok": False, "error": "No encontré el usuario Django."}, status=404)
+
+        foto = request.FILES.get("foto")
+        if not foto:
+            return JsonResponse({"ok": False, "error": "No llegó la imagen."}, status=400)
+
+        image_bytes = foto.read()
+        if not image_bytes:
+            return JsonResponse({"ok": False, "error": "No se pudo leer la imagen."}, status=400)
+
+        # Validación real de imagen
+        try:
+            img_test = Image.open(io.BytesIO(image_bytes))
+            img_test.verify()
+        except Exception:
+            return JsonResponse({"ok": False, "error": "El archivo seleccionado no es una imagen válida."}, status=400)
+
+        nombre, para_que_sirve, debug_text = analizar_imagen_openai_bytes(image_bytes)
+
+        if nombre:
+            return JsonResponse({
+                "ok": True,
+                "nombre": nombre,
+                "para_que_sirve": para_que_sirve,
+            })
+
+        return JsonResponse({
+            "ok": False,
+            "error": "No pude identificar el medicamento en la foto.",
+            "debug": debug_text,
+        }, status=200)
+
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": f"Error analizando imagen: {e}"}, status=500)
+
+@csrf_exempt
+def api_v1_interfaz_cuidador(request):
+    """
+    Devuelve la información base del cuidador para Flutter:
+    - datos del cuidador
+    - adulto vinculado (si existe)
+    - bloqueo por vínculo
+    """
+    try:
+        data = _json_body(request) if request.method == "POST" else {}
+        username = (request.GET.get("username") or data.get("username") or "").strip()
+
+        if not username:
+            return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
+
+        mysql_user = verificar_usuario_en_bd(username)
+
+        if not mysql_user or mysql_user.get("tipo") != "cuidador":
+            return JsonResponse(
+                {"ok": False, "error": "Solo cuidadores."},
+                status=403
+            )
+
+        cuidador_id = mysql_user.get("id")
+        nombre = mysql_user.get("nombre") or ""
+        correo = (mysql_user.get("correo") or "").strip()
+        telefono = (mysql_user.get("telefono") or "").strip()
+
+        adulto_vinculado = None
+        if cuidador_id:
+            adulto_vinculado = _mysql_get_unico_vinculo_cuidador(cuidador_id)
+
+        return JsonResponse({
+            "ok": True,
+            "cuidador": {
+                "id": cuidador_id,
+                "nombre": nombre,
+                "correo": correo,
+                "telefono": telefono,
+            },
+            "adulto_vinculado": (
+                {
+                    "id": adulto_vinculado["id"],
+                    "nombre": adulto_vinculado["nombre"],
+                }
+                if adulto_vinculado else None
+            ),
+            "bloqueado_por_vinculo": adulto_vinculado is None,
+        })
+
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+    
 @login_required
 def api_v1_me(request):
     correo = request.user.username
