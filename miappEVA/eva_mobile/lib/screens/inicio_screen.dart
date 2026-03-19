@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:geolocator/geolocator.dart';
 
 import '../models/inicio_model.dart';
 import '../services/inicio_service.dart';
@@ -11,6 +13,9 @@ import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import '../services/medicamento_service.dart';
 import '../services/alarmas_local_service.dart';
+import '../services/adulto_location_service.dart';
+import '../services/tts_service.dart';
+import 'adulto_chat_page.dart';
 import 'crear_alarma_manual_page.dart';
 
 class InicioScreen extends StatefulWidget {
@@ -21,10 +26,15 @@ class InicioScreen extends StatefulWidget {
 }
 
 class _InicioScreenState extends State<InicioScreen> {
+  static const Duration _locationPingInterval = Duration(seconds: 10);
+
   InicioModel? _inicio;
   bool _loading = true;
   String? _error;
   bool _mostrarCodigo = false;
+  bool _ubicacionActiva = false;
+  bool _cargandoUbicacion = false;
+  Timer? _locationPingTimer;
 
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _speechDisponible = false;
@@ -33,6 +43,7 @@ class _InicioScreenState extends State<InicioScreen> {
   bool _procesandoLector = false;
   String _textoEscuchado = '';
   String _respuestaIA = '';
+  bool _bienvenidaHablada = false;
 
   @override
   void initState() {
@@ -42,7 +53,38 @@ class _InicioScreenState extends State<InicioScreen> {
 
   Future<void> _initPantalla() async {
     await _inicializarVoz();
+    await TtsService.inicializar();
+    await AlarmasLocalService.sincronizarDesdeBackend();
+    await _cargarEstadoUbicacion();
     await _cargarInicio();
+    _hablarBienvenida();
+  }
+
+  void _hablarBienvenida() {
+    if (_bienvenidaHablada || !mounted) return;
+    _bienvenidaHablada = true;
+      unawaited(
+        TtsService.hablar(
+          'Bienvenido a EVA. Presiona hablar para decirme lo que necesitas, lector de medicamentos para escanear un medicamento, alarma para crear una alarma manual, chat para comunicarte con tu cuidador, o ubicacion compartida para que tu cuidador pueda verla.',
+        ),
+      );
+    }
+
+  Future<void> _cargarEstadoUbicacion() async {
+    try {
+      final estado = await AdultoLocationService.obtenerEstado();
+      if (!mounted) return;
+
+      setState(() {
+        _ubicacionActiva = estado.enabled;
+      });
+
+      if (_ubicacionActiva) {
+        _iniciarPingUbicacion();
+      } else {
+        _detenerPingUbicacion();
+      }
+    } catch (_) {}
   }
 
   Future<void> _inicializarVoz() async {
@@ -117,6 +159,9 @@ class _InicioScreenState extends State<InicioScreen> {
 
   Future<void> _accionLectorMedicamentos() async {
     try {
+      await TtsService.hablar(
+        'Selecciona una foto de tu medicamento para que pueda ayudarte a identificarlo.',
+      );
       final picker = ImagePicker();
 
       final XFile? foto = await picker.pickImage(
@@ -173,6 +218,7 @@ class _InicioScreenState extends State<InicioScreen> {
   }
 
   Future<void> _cerrarSesion() async {
+    _detenerPingUbicacion();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('isLoggedIn');
     await prefs.remove('userData');
@@ -183,6 +229,120 @@ class _InicioScreenState extends State<InicioScreen> {
       MaterialPageRoute(builder: (_) => const LoginScreen()),
       (route) => false,
     );
+  }
+
+  Future<void> _toggleUbicacion() async {
+    if (_cargandoUbicacion) return;
+
+    setState(() {
+      _cargandoUbicacion = true;
+    });
+
+    try {
+      if (_ubicacionActiva) {
+        final estado = await AdultoLocationService.cambiarEstado(false);
+        _detenerPingUbicacion();
+        if (!mounted) return;
+        setState(() {
+          _ubicacionActiva = estado.enabled;
+        });
+        await TtsService.hablar('Ubicacion desactivada.');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ubicacion desactivada.')),
+        );
+      } else {
+        await TtsService.hablar(
+          'Vamos a activar tu ubicacion para compartirla con tu cuidador.',
+        );
+        final enabled = await Geolocator.isLocationServiceEnabled();
+        if (!enabled) {
+          throw Exception('Activa la ubicacion del dispositivo para continuar.');
+        }
+
+        var permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+        }
+
+        if (permission == LocationPermission.denied) {
+          throw Exception('No se concedio permiso de ubicacion.');
+        }
+
+        if (permission == LocationPermission.deniedForever) {
+          throw Exception('El permiso de ubicacion esta bloqueado. Activalo desde ajustes.');
+        }
+
+        final position = await _obtenerPosicionActual();
+        final estado = await AdultoLocationService.cambiarEstado(true);
+        await AdultoLocationService.enviarPing(
+          lat: position.latitude,
+          lng: position.longitude,
+          accuracy: position.accuracy,
+        );
+
+        if (!mounted) return;
+        setState(() {
+          _ubicacionActiva = estado.enabled;
+        });
+        _iniciarPingUbicacion();
+        await TtsService.hablar('Ubicacion activada correctamente.');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ubicacion activada correctamente.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _cargandoUbicacion = false;
+      });
+    }
+  }
+
+  Future<void> _enviarUbicacionActual() async {
+    final position = await _obtenerPosicionActual();
+
+    await AdultoLocationService.enviarPing(
+      lat: position.latitude,
+      lng: position.longitude,
+      accuracy: position.accuracy,
+    );
+  }
+
+  Future<Position> _obtenerPosicionActual() async {
+    try {
+      return await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      ).timeout(const Duration(seconds: 12));
+    } on TimeoutException {
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null) {
+        return lastKnown;
+      }
+      throw Exception(
+        'No pude obtener la ubicacion del dispositivo. En el emulador, configura una ubicacion manual desde Extended controls > Location.',
+      );
+    }
+  }
+
+  void _iniciarPingUbicacion() {
+    _locationPingTimer?.cancel();
+    _locationPingTimer = Timer.periodic(_locationPingInterval, (_) async {
+      try {
+        await _enviarUbicacionActual();
+      } catch (_) {}
+    });
+  }
+
+  void _detenerPingUbicacion() {
+    _locationPingTimer?.cancel();
+    _locationPingTimer = null;
   }
 
   int? _mapearDiaTextoANumero(String dia) {
@@ -299,6 +459,8 @@ class _InicioScreenState extends State<InicioScreen> {
       _escuchando = true;
     });
 
+    await TtsService.hablar('Te escucho. Dime que necesitas.');
+
     await _speech.listen(
       localeId: 'es_MX',
       partialResults: true,
@@ -404,6 +566,7 @@ class _InicioScreenState extends State<InicioScreen> {
     required String titulo,
     required String mensaje,
   }) {
+    TtsService.hablar(mensaje);
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -432,6 +595,7 @@ class _InicioScreenState extends State<InicioScreen> {
                 height: 56,
                 child: ElevatedButton(
                   onPressed: () {
+                    TtsService.detener();
                     Navigator.pop(context);
 
                     setState(() {
@@ -616,6 +780,89 @@ class _InicioScreenState extends State<InicioScreen> {
     );
   }
 
+  Widget _buildTarjetaUbicacion() {
+    final color = _ubicacionActiva ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7);
+    final border = _ubicacionActiva ? const Color(0xFF22C55E) : const Color(0xFFF59E0B);
+    final textColor = _ubicacionActiva ? const Color(0xFF166534) : const Color(0xFF92400E);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: border, width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                _ubicacionActiva ? Icons.location_on : Icons.location_off,
+                color: textColor,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _ubicacionActiva ? 'Ubicacion compartida activa' : 'Ubicacion compartida desactivada',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: textColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _ubicacionActiva
+                ? 'Tu cuidador podra ver tu ubicacion mientras esta pantalla siga enviando actualizaciones.'
+                : 'Activa tu ubicacion para que el cuidador pueda verla en el mapa.',
+            style: const TextStyle(
+              fontSize: 15,
+              height: 1.4,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF374151),
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _cargandoUbicacion ? null : _toggleUbicacion,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _ubicacionActiva
+                    ? const Color(0xFFEF4444)
+                    : const Color(0xFF173A8A),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              icon: Icon(
+                _ubicacionActiva ? Icons.location_off : Icons.my_location,
+              ),
+              label: Text(
+                _cargandoUbicacion
+                    ? 'Procesando...'
+                    : _ubicacionActiva
+                        ? 'Desactivar ubicacion'
+                        : 'Activar ubicacion',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildContenido() {
     return Center(
       child: ConstrainedBox(
@@ -681,6 +928,9 @@ class _InicioScreenState extends State<InicioScreen> {
                       imagen: 'assets/images/alarmaBoton.png',
                       texto: 'Alarma',
                       onTap: () async {
+                        await TtsService.hablar(
+                          'Aqui puedes crear una alarma manual. Primero selecciona la hora, luego los dias si quieres repetirla, y por ultimo escribe el mensaje.',
+                        );
                         final creada = await Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -698,6 +948,42 @@ class _InicioScreenState extends State<InicioScreen> {
                       },
                       size: 190,
                     ),
+                  const SizedBox(height: 28),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        await TtsService.hablar(
+                          'Aqui puedes comunicarte con tu cuidador usando tu voz.',
+                        );
+                        if (!mounted) return;
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const AdultoChatPage(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.chat_bubble_outline),
+                      label: const Text(
+                        'Chat con cuidador',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF173A8A),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  _buildTarjetaUbicacion(),
                   const SizedBox(height: 28),
                   Container(
                     width: double.infinity,
@@ -834,5 +1120,12 @@ class _InicioScreenState extends State<InicioScreen> {
         color: const Color(0xFF173A8A),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _detenerPingUbicacion();
+    unawaited(TtsService.detener());
+    super.dispose();
   }
 }

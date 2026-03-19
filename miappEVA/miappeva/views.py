@@ -1096,7 +1096,7 @@ def _mysql_get_adulto_por_codigo(codigo: str):
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT Id_Usuario, Nombre_Completo, correo, Tipo "
-            "FROM Usuarios WHERE Codigo_unico=%s LIMIT 1",
+            "FROM Usuarios WHERE UPPER(Codigo_unico)=UPPER(%s) LIMIT 1",
             [codigo],
         )
         row = cursor.fetchone()
@@ -1111,7 +1111,8 @@ def _mysql_get_vinculo_por_adulto(adulto_id: int):
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT Id_AdultoCuidador, Cuidador_id, Activo "
-            "FROM adulto_cuidador WHERE Adulto_id=%s LIMIT 1",
+            "FROM adulto_cuidador WHERE Adulto_id=%s AND Activo=1 "
+            "ORDER BY fecha_asignacion DESC LIMIT 1",
             [adulto_id],
         )
         row = cursor.fetchone()
@@ -1189,7 +1190,7 @@ def vincular_adulto_por_codigo(request):
     if not username:
         return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
 
-    mysql_user = verificar_usuario_en_bd(username)
+    mysql_user = _mysql_get_usuario_por_identificador(username) or verificar_usuario_en_bd(username)
     if not mysql_user or mysql_user.get("tipo") != "cuidador":
         return JsonResponse({"ok": False, "error": "Solo cuidadores pueden vincular."}, status=403)
 
@@ -2260,6 +2261,31 @@ def _cuidador_get_adulto_django(request):
 
     return adulto_django, None
 
+def _cuidador_get_adulto_django_from_username(username):
+    ident = (username or "").strip()
+    mysql_user = verificar_usuario_en_bd(ident)
+    if not mysql_user or mysql_user.get("tipo") != "cuidador":
+        return None, "Solo cuidadores."
+
+    cuidador_id = mysql_user["id"]
+    adulto_vinculado = _mysql_get_unico_vinculo_cuidador(cuidador_id)
+    if not adulto_vinculado:
+        return None, "No hay adulto vinculado."
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT correo FROM Usuarios WHERE Id_Usuario=%s LIMIT 1",
+            [adulto_vinculado["id"]],
+        )
+        r = cursor.fetchone()
+    correo_adulto = (r[0] if r else "") or ""
+
+    adulto_django = _django_user_from_mysql_adulto(adulto_vinculado["nombre"], correo_adulto)
+    if not adulto_django:
+        return None, "No se encontro usuario Django del adulto."
+
+    return adulto_django, None
+
 #------crear alarma (cuidador)-----#
 @login_required
 @require_POST
@@ -3054,7 +3080,98 @@ def _chat_resolver_contexto(request):
 
     return None, None, None, "Tipo de usuario inválido para chat."
 
+def _mysql_get_usuario_por_identificador_casefold(identificador: str):
+    ident = (identificador or "").strip()
+    if not ident:
+        return None
 
+    by_ident = _mysql_get_usuario_por_identificador(ident)
+    if by_ident:
+        return {
+            "id": by_ident.get("id"),
+            "nombre": by_ident.get("nombre_completo") or "",
+            "tipo": by_ident.get("tipo") or "",
+            "correo": by_ident.get("correo") or "",
+            "telefono": by_ident.get("telefono") or "",
+            "activo": True,
+        }
+
+    by_verify = verificar_usuario_en_bd(ident)
+    if by_verify:
+        return by_verify
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT Id_Usuario, Nombre_Completo, Tipo, correo, Telefono, activo "
+            "FROM Usuarios WHERE LOWER(Nombre_Completo)=LOWER(%s) LIMIT 1",
+            [ident],
+        )
+        row = cursor.fetchone()
+
+    if not row:
+        return None
+
+    return {
+        "id": row[0],
+        "nombre": row[1],
+        "tipo": row[2],
+        "correo": row[3],
+        "telefono": row[4],
+        "activo": bool(row[5]),
+    }
+
+
+def _require_premium_chat_mobile(mysql_user):
+    if not mysql_user:
+        return False, JsonResponse({"ok": False, "error": "No pude resolver tu usuario MySQL."}, status=400)
+
+    usuario_id = int(mysql_user["id"])
+    tipo = (mysql_user.get("tipo") or "").strip().lower()
+
+    if tipo == "adulto":
+        if not _mysql_adulto_premium_activo(usuario_id):
+            return False, JsonResponse(
+                {"ok": False, "error": "Chat es premium. Vinculate con tu cuidador para activarlo."},
+                status=403,
+            )
+        return True, None
+
+    if tipo == "cuidador":
+        if not _mysql_cuidador_premium_activo(usuario_id):
+            return False, JsonResponse(
+                {"ok": False, "error": "Chat es premium. Activa tu membresia para usarlo."},
+                status=403,
+            )
+        return True, None
+
+    return False, JsonResponse({"ok": False, "error": "Tipo invalido para chat."}, status=403)
+
+
+def _chat_resolver_contexto_mobile(username):
+    mysql_user = _mysql_get_usuario_por_identificador_casefold(username)
+    if not mysql_user:
+        return None, None, None, None, "No pude resolver tu usuario MySQL."
+
+    emisor_id = int(mysql_user["id"])
+    tipo = (mysql_user.get("tipo") or "").strip().lower()
+
+    if tipo == "adulto":
+        adulto_id = emisor_id
+        cuidador = _mysql_get_cuidador_por_adulto(adulto_id)
+        if not cuidador:
+            return None, None, None, mysql_user, "No hay cuidador vinculado."
+        cuidador_id = int(cuidador["id"])
+        return adulto_id, cuidador_id, emisor_id, mysql_user, None
+
+    if tipo == "cuidador":
+        cuidador_id = emisor_id
+        adulto_vinculado = _mysql_get_unico_vinculo_cuidador(cuidador_id)
+        if not adulto_vinculado:
+            return None, None, None, mysql_user, "No hay adulto vinculado."
+        adulto_id = int(adulto_vinculado["id"])
+        return adulto_id, cuidador_id, emisor_id, mysql_user, None
+
+    return None, None, None, mysql_user, "Tipo de usuario invalido para chat."
 def _mysql_get_usuario_basico(usuario_id: int):
     with connection.cursor() as cursor:
         cursor.execute(
@@ -3222,6 +3339,181 @@ def chat_post_marcar_visto(request):
     connection.commit()
     return JsonResponse({"ok": True, "updated": updated})
 
+@csrf_exempt
+def api_v1_chat_mensajes(request):
+    try:
+        if request.method != "GET":
+            return JsonResponse({"ok": False, "error": "Metodo no permitido"}, status=405)
+
+        username = (request.GET.get("username") or "").strip()
+        adulto_id, cuidador_id, emisor_id, mysql_user, err = _chat_resolver_contexto_mobile(username)
+        if err:
+            return JsonResponse({"ok": False, "error": err}, status=403)
+
+        ok, resp = _require_premium_chat_mobile(mysql_user)
+        if not ok:
+            return resp
+
+        after_id = request.GET.get("after_id") or "0"
+        limit = request.GET.get("limit") or "50"
+        try:
+            after_id = int(after_id)
+        except Exception:
+            after_id = 0
+        try:
+            limit = int(limit)
+            limit = max(1, min(limit, 200))
+        except Exception:
+            limit = 50
+
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT id, mensaje, creado_en, emisor_id, escuchado, tipo
+                FROM chat_voz
+                WHERE adulto_id=%s AND cuidador_id=%s AND id > %s
+                ORDER BY id ASC
+                LIMIT %s
+            """, [adulto_id, cuidador_id, after_id, limit])
+            rows = cursor.fetchall()
+
+        mensajes = []
+        last_id = after_id
+        for r in rows:
+            mid = int(r[0])
+            last_id = max(last_id, mid)
+            mensajes.append({
+                "id": mid,
+                "mensaje": r[1] or "",
+                "creado_en": r[2].isoformat() if r[2] else None,
+                "emisor_id": int(r[3]),
+                "escuchado": bool(r[4]),
+                "tipo": r[5] or "texto",
+            })
+
+        return JsonResponse({
+            "ok": True,
+            "adulto_id": adulto_id,
+            "cuidador_id": cuidador_id,
+            "emisor_id": emisor_id,
+            "tipo_usuario": (mysql_user.get("tipo") or "").strip().lower(),
+            "mensajes": mensajes,
+            "last_id": last_id,
+        })
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+
+@csrf_exempt
+def api_v1_chat_enviar(request):
+    try:
+        if request.method != "POST":
+            return JsonResponse({"ok": False, "error": "Metodo no permitido"}, status=405)
+
+        body = _json_body(request)
+        username = (body.get("username") or "").strip()
+        texto = (body.get("mensaje") or "").strip()
+        tipo_mensaje = (body.get("tipo") or "texto").strip().lower()
+        if tipo_mensaje == "voz":
+            tipo_mensaje = "audio"
+        if tipo_mensaje not in ("texto", "audio"):
+            tipo_mensaje = "texto"
+
+        adulto_id, cuidador_id, emisor_id, mysql_user, err = _chat_resolver_contexto_mobile(username)
+        if err:
+            return JsonResponse({"ok": False, "error": err}, status=403)
+
+        ok, resp = _require_premium_chat_mobile(mysql_user)
+        if not ok:
+            return resp
+
+        if not texto:
+            return JsonResponse({"ok": False, "error": "Mensaje vacio."}, status=400)
+
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO chat_voz (mensaje, tipo, escuchado, adulto_id, cuidador_id, emisor_id)
+                VALUES (%s, %s, 0, %s, %s, %s)
+            """, [texto, tipo_mensaje, adulto_id, cuidador_id, emisor_id])
+            new_id = int(cursor.lastrowid)
+
+            cursor.execute("SELECT creado_en FROM chat_voz WHERE id=%s LIMIT 1", [new_id])
+            row = cursor.fetchone()
+
+        connection.commit()
+
+        receptor_id = cuidador_id if int(emisor_id) == int(adulto_id) else adulto_id
+        receptor = _mysql_get_usuario_basico(receptor_id)
+        receptor_django = None
+        if receptor:
+            receptor_django = _django_user_from_mysql_usuario(receptor.get("nombre") or "", receptor.get("correo") or "")
+
+        if receptor_django:
+            nombre_emisor = (mysql_user.get("nombre") or username or "EVA").strip()
+            texto_corto = texto if len(texto) <= 120 else (texto[:117] + "...")
+            url_destino = "/interfaz-cuidador/" if int(receptor_id) == int(cuidador_id) else "/inicio/"
+            payload = {
+                "kind": "chat",
+                "title": f"Nuevo mensaje de {nombre_emisor}",
+                "body": texto_corto,
+                "tag": f"chat-{adulto_id}-{cuidador_id}",
+                "url": url_destino,
+                "id": new_id,
+            }
+            _enviar_webpush_a_usuario(receptor_django, payload)
+
+        return JsonResponse({
+            "ok": True,
+            "id": new_id,
+            "creado_en": row[0].isoformat() if row and row[0] else None,
+        })
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+
+@csrf_exempt
+def api_v1_chat_marcar_visto(request):
+    try:
+        if request.method != "POST":
+            return JsonResponse({"ok": False, "error": "Metodo no permitido"}, status=405)
+
+        body = _json_body(request)
+        username = (body.get("username") or "").strip()
+
+        adulto_id, cuidador_id, emisor_id, mysql_user, err = _chat_resolver_contexto_mobile(username)
+        if err:
+            return JsonResponse({"ok": False, "error": err}, status=403)
+
+        ok, resp = _require_premium_chat_mobile(mysql_user)
+        if not ok:
+            return resp
+
+        up_to_id = body.get("up_to_id")
+        try:
+            up_to_id = int(up_to_id) if up_to_id is not None else None
+        except Exception:
+            up_to_id = None
+
+        params = [adulto_id, cuidador_id, emisor_id]
+        extra = ""
+        if up_to_id is not None:
+            extra = " AND id <= %s "
+            params.append(up_to_id)
+
+        with connection.cursor() as cursor:
+            cursor.execute(f"""
+                UPDATE chat_voz
+                SET escuchado=1
+                WHERE adulto_id=%s AND cuidador_id=%s
+                  AND emisor_id <> %s
+                  AND escuchado=0
+                  {extra}
+            """, params)
+            updated = int(cursor.rowcount or 0)
+
+        connection.commit()
+        return JsonResponse({"ok": True, "updated": updated})
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
 #-----Vinculacion 1 a 1 -----
 def _mysql_get_unico_vinculo_cuidador(cuidador_id: int):
     with connection.cursor() as cursor:
@@ -3229,7 +3521,7 @@ def _mysql_get_unico_vinculo_cuidador(cuidador_id: int):
             "SELECT a.Adulto_id, u.Nombre_Completo "
             "FROM adulto_cuidador a "
             "JOIN Usuarios u ON u.Id_Usuario=a.Adulto_id "
-            "WHERE a.Cuidador_id=%s "
+            "WHERE a.Cuidador_id=%s AND a.Activo=1 "
             "ORDER BY a.fecha_asignacion DESC LIMIT 1",
             [cuidador_id],
         )
@@ -3261,7 +3553,7 @@ def _mysql_get_cuidador_por_adulto(adulto_id: int):
             "SELECT a.Cuidador_id, u.Nombre_Completo, u.correo "
             "FROM adulto_cuidador a "
             "JOIN Usuarios u ON u.Id_Usuario=a.Cuidador_id "
-            "WHERE a.Adulto_id=%s "
+            "WHERE a.Adulto_id=%s AND a.Activo=1 "
             "ORDER BY a.fecha_asignacion DESC LIMIT 1",
             [adulto_id],
         )
@@ -4012,6 +4304,43 @@ def api_v1_alarmas_pendientes(request):
 
     return JsonResponse({"ok": True, "alarmas": data})
 
+@csrf_exempt
+def api_v1_alarmas(request):
+    username = (request.GET.get("username") or "").strip()
+    if not username:
+        return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
+
+    usuario_mysql = verificar_usuario_en_bd(username)
+    if not usuario_mysql:
+        return JsonResponse({"ok": False, "error": "Usuario no encontrado."}, status=404)
+
+    django_user = User.objects.filter(username__iexact=username.lower()).first()
+    if not django_user and usuario_mysql.get("correo"):
+        django_user = User.objects.filter(username__iexact=usuario_mysql["correo"].lower()).first()
+    if not django_user and usuario_mysql.get("nombre"):
+        django_user = User.objects.filter(first_name__iexact=usuario_mysql["nombre"]).first()
+    if not django_user:
+        return JsonResponse({"ok": False, "error": "No encontre el usuario Django."}, status=404)
+
+    alarmas = (
+        Alarma.objects
+        .filter(usuario=django_user)
+        .order_by("fecha", "hora")
+    )
+
+    data = [
+        {
+            "id": a.id,
+            "hora": a.hora.strftime("%H:%M"),
+            "mensaje": a.mensaje,
+            "dias": a.dias or "",
+            "fecha": a.fecha.isoformat() if a.fecha else None,
+            "activa": bool(a.activa),
+        }
+        for a in alarmas
+    ]
+    return JsonResponse({"ok": True, "alarmas": data})
+
 
 @csrf_exempt
 def api_v1_marcar_entregada(request):
@@ -4174,6 +4503,571 @@ def api_v1_interfaz_cuidador(request):
 
     except Exception as e:
         return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+@csrf_exempt
+def api_v1_eliminar_alarma(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Metodo no permitido"}, status=405)
+
+    data = _json_body(request)
+    username = (data.get("username") or "").strip()
+    alarma_id = data.get("id")
+
+    if not username or not alarma_id:
+        return JsonResponse({"ok": False, "error": "Username e id requeridos."}, status=400)
+
+    usuario_mysql = verificar_usuario_en_bd(username)
+    if not usuario_mysql:
+        return JsonResponse({"ok": False, "error": "Usuario no encontrado."}, status=404)
+
+    django_user = User.objects.filter(username__iexact=username.lower()).first()
+    if not django_user and usuario_mysql.get("correo"):
+        django_user = User.objects.filter(username__iexact=usuario_mysql["correo"].lower()).first()
+    if not django_user and usuario_mysql.get("nombre"):
+        django_user = User.objects.filter(first_name__iexact=usuario_mysql["nombre"]).first()
+    if not django_user:
+        return JsonResponse({"ok": False, "error": "No encontre el usuario Django."}, status=404)
+
+    alarma = Alarma.objects.filter(id=alarma_id, usuario=django_user).first()
+    if not alarma:
+        return JsonResponse({"ok": False, "error": "Alarma no encontrada."}, status=404)
+
+    alarma.delete()
+    return JsonResponse({"ok": True})
+
+@csrf_exempt
+def api_v1_cuidador_alarmas(request):
+    try:
+        username = (request.GET.get("username") or "").strip()
+        if not username:
+            return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
+
+        adulto_django, err = _cuidador_get_adulto_django_from_username(username)
+        if err:
+            return JsonResponse({"ok": False, "error": err}, status=403)
+
+        alarmas = (
+            Alarma.objects
+            .filter(usuario=adulto_django)
+            .order_by("fecha", "hora")
+        )
+
+        data = [
+            {
+                "id": a.id,
+                "hora": a.hora.strftime("%H:%M"),
+                "mensaje": a.mensaje,
+                "dias": a.dias or "",
+                "fecha": a.fecha.isoformat() if a.fecha else None,
+                "activa": bool(a.activa),
+            }
+            for a in alarmas
+        ]
+        return JsonResponse({"ok": True, "alarmas": data})
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+@csrf_exempt
+def api_v1_cuidador_alarmas_crear(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Metodo no permitido"}, status=405)
+
+    try:
+        data = _json_body(request)
+        username = (data.get("username") or "").strip()
+        adulto_django, err = _cuidador_get_adulto_django_from_username(username)
+        if err:
+            return JsonResponse({"ok": False, "error": err}, status=403)
+
+        fecha_raw = data.get("fecha")
+        hora_raw = data.get("hora")
+        mensaje = (data.get("mensaje") or "Es hora de tu alarma!").strip()
+        dias = (data.get("dias") or "").strip()
+        activa = bool(data.get("activa", True))
+
+        if not hora_raw:
+            return JsonResponse({"ok": False, "error": "Hora requerida"}, status=400)
+
+        hora = _parse_hora(hora_raw)
+        if not hora:
+            return JsonResponse({"ok": False, "error": "Hora invalida"}, status=400)
+
+        fecha = _parse_fecha(fecha_raw) if fecha_raw else None
+
+        alarma = Alarma.objects.create(
+            usuario=adulto_django,
+            fecha=fecha,
+            hora=hora,
+            mensaje=mensaje,
+            dias=dias,
+            activa=activa,
+        )
+        return JsonResponse({"ok": True, "id": alarma.id})
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+@csrf_exempt
+def api_v1_cuidador_alarmas_editar(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Metodo no permitido"}, status=405)
+
+    try:
+        data = _json_body(request)
+        username = (data.get("username") or "").strip()
+        adulto_django, err = _cuidador_get_adulto_django_from_username(username)
+        if err:
+            return JsonResponse({"ok": False, "error": err}, status=403)
+
+        _id = data.get("id")
+        if not _id:
+            return JsonResponse({"ok": False, "error": "ID requerido"}, status=400)
+
+        hora_raw = data.get("hora")
+        mensaje = (data.get("mensaje") or "").strip()
+        fecha_raw = data.get("fecha")
+        dias = (data.get("dias") or "").strip()
+        activa = bool(data.get("activa", True))
+
+        if not hora_raw:
+            return JsonResponse({"ok": False, "error": "Hora requerida"}, status=400)
+        if not mensaje:
+            return JsonResponse({"ok": False, "error": "Mensaje requerido"}, status=400)
+
+        hora = _parse_hora(hora_raw)
+        if not hora:
+            return JsonResponse({"ok": False, "error": "Hora invalida"}, status=400)
+
+        fecha = _parse_fecha(fecha_raw) if fecha_raw else None
+
+        alarma = Alarma.objects.filter(id=_id, usuario=adulto_django).first()
+        if not alarma:
+            return JsonResponse({"ok": False, "error": "Alarma no encontrada"}, status=404)
+
+        alarma.hora = hora
+        alarma.mensaje = mensaje
+        alarma.fecha = fecha
+        alarma.dias = dias
+        alarma.activa = activa
+        alarma.save(update_fields=["hora", "mensaje", "fecha", "dias", "activa"])
+        return JsonResponse({"ok": True})
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+@csrf_exempt
+def api_v1_cuidador_alarmas_eliminar(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Metodo no permitido"}, status=405)
+
+    try:
+        data = _json_body(request)
+        username = (data.get("username") or "").strip()
+        adulto_django, err = _cuidador_get_adulto_django_from_username(username)
+        if err:
+            return JsonResponse({"ok": False, "error": err}, status=403)
+
+        _id = data.get("id")
+        if not _id:
+            return JsonResponse({"ok": False, "error": "ID requerido"}, status=400)
+
+        alarma = Alarma.objects.filter(id=_id, usuario=adulto_django).first()
+        if not alarma:
+            return JsonResponse({"ok": False, "error": "Alarma no encontrada"}, status=404)
+
+        alarma.delete()
+        return JsonResponse({"ok": True})
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+
+@csrf_exempt
+@require_POST
+def api_v1_cuidador_crear_alarmas_receta(request):
+    try:
+        username = (request.POST.get("username") or "").strip()
+        if not username:
+            return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
+
+        mysql_user = verificar_usuario_en_bd(username)
+        if not mysql_user or mysql_user.get("tipo") != "cuidador":
+            return JsonResponse({"ok": False, "error": "Solo cuidadores."}, status=403)
+
+        cuidador_id = mysql_user["id"]
+        if not _mysql_cuidador_premium_activo(int(cuidador_id)):
+            return JsonResponse(
+                {"ok": False, "error": "Funcion premium. Activa tu membresia para usar recetas."},
+                status=403,
+            )
+
+        adulto_vinculado = _mysql_get_unico_vinculo_cuidador(cuidador_id)
+        if not adulto_vinculado:
+            return JsonResponse({"ok": False, "error": "No tienes un adulto vinculado."}, status=403)
+
+        adulto_id = int(adulto_vinculado["id"])
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT Nombre_Completo, correo FROM Usuarios WHERE Id_Usuario=%s LIMIT 1",
+                [adulto_id],
+            )
+            row = cursor.fetchone()
+
+        if not row:
+            return JsonResponse({"ok": False, "error": "No encontre al adulto vinculado."}, status=404)
+
+        nombre_adulto = row[0] or ""
+        correo_adulto = row[1] or ""
+        adulto_django = _django_user_from_mysql_adulto(nombre_adulto, correo_adulto)
+        if not adulto_django:
+            return JsonResponse({"ok": False, "error": "No encontre el usuario Django del adulto."}, status=404)
+
+        foto = request.FILES.get("foto")
+        if not foto:
+            return JsonResponse({"ok": False, "error": "Falta la imagen de la receta."}, status=400)
+
+        content_type = (getattr(foto, "content_type", "") or "").lower()
+        filename = (getattr(foto, "name", "") or "").lower()
+        extensiones_validas = (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".heic")
+        if not content_type.startswith("image/") and not filename.endswith(extensiones_validas):
+            return JsonResponse({"ok": False, "error": "Formato no valido. Debe ser imagen."}, status=400)
+
+        image_bytes = foto.read()
+        if not image_bytes:
+            return JsonResponse({"ok": False, "error": "No se pudo leer la imagen."}, status=400)
+
+        medicamentos, debug_text = _analizar_receta_openai(image_bytes)
+        if not medicamentos:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "message": "Detecte 0 medicamentos",
+                    "detectados": 0,
+                    "medicamentos": [],
+                    "error": "No pude extraer medicamentos de la receta.",
+                    "debug": debug_text,
+                },
+                status=200,
+            )
+
+        tratamiento_id, total_alarmas, resumen = _guardar_tratamiento_medicamentos_alarmas(
+            adulto_id,
+            medicamentos,
+            django_user=adulto_django,
+        )
+        detectados = len(resumen)
+
+        return JsonResponse(
+            {
+                "ok": True,
+                "message": f"Detecte {detectados} medicamentos para {adulto_vinculado['nombre']}",
+                "detectados": detectados,
+                "tratamiento_id": tratamiento_id,
+                "alarmas_creadas": total_alarmas,
+                "medicamentos": resumen,
+                "adulto": {
+                    "id": adulto_id,
+                    "nombre": adulto_vinculado["nombre"],
+                },
+            }
+        )
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+@csrf_exempt
+def api_v1_cuidador_ubicacion_ultima(request):
+    try:
+        username = (request.GET.get("username") or "").strip()
+        if not username:
+            return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
+
+        mysql_user = verificar_usuario_en_bd(username)
+        if not mysql_user or mysql_user.get("tipo") != "cuidador":
+            return JsonResponse({"ok": False, "error": "Solo cuidadores."}, status=403)
+
+        cuidador_id = mysql_user["id"]
+        adulto_vinculado = _mysql_get_unico_vinculo_cuidador(cuidador_id)
+        if not adulto_vinculado:
+            return JsonResponse({
+                "ok": True,
+                "adulto": None,
+                "compartir_ubicacion": False,
+                "sin_senal": True,
+                "ultima": None,
+            })
+
+        adulto_id = adulto_vinculado["id"]
+        compartir = _mysql_get_compartir_ubicacion(adulto_id)
+
+        if not compartir:
+            return JsonResponse({
+                "ok": True,
+                "adulto": adulto_vinculado,
+                "compartir_ubicacion": False,
+                "sin_senal": False,
+                "ultima": None,
+            })
+
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT lat, lng, precision_m, actualizado_en,
+                       TIMESTAMPDIFF(SECOND, actualizado_en, NOW()) AS diff_seg
+                FROM ubicacion_actual
+                WHERE usuario_id=%s
+                LIMIT 1
+            """, [adulto_id])
+            row = cursor.fetchone()
+
+        if not row:
+            return JsonResponse({
+                "ok": True,
+                "adulto": adulto_vinculado,
+                "compartir_ubicacion": True,
+                "sin_senal": True,
+                "ultima": None,
+            })
+
+        lat, lng, precision, actualizado_en, diff_seg = row
+        try:
+            sin_senal = (diff_seg is None) or (int(diff_seg) > 180)
+        except Exception:
+            sin_senal = False
+
+        return JsonResponse({
+            "ok": True,
+            "adulto": adulto_vinculado,
+            "compartir_ubicacion": True,
+            "sin_senal": sin_senal,
+            "ultima": {
+                "lat": float(lat),
+                "lng": float(lng),
+                "accuracy": float(precision) if precision is not None else None,
+                "timestamp": actualizado_en.isoformat() if actualizado_en else None,
+            },
+        })
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+@csrf_exempt
+def api_v1_cuidador_ubicacion_historial(request):
+    try:
+        username = (request.GET.get("username") or "").strip()
+        if not username:
+            return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
+
+        mysql_user = verificar_usuario_en_bd(username)
+        if not mysql_user or mysql_user.get("tipo") != "cuidador":
+            return JsonResponse({"ok": False, "error": "Solo cuidadores."}, status=403)
+
+        cuidador_id = mysql_user["id"]
+        adulto_vinculado = _mysql_get_unico_vinculo_cuidador(cuidador_id)
+        if not adulto_vinculado:
+            return JsonResponse({"ok": True, "adulto": None, "puntos": []})
+
+        adulto_id = adulto_vinculado["id"]
+        if not _mysql_get_compartir_ubicacion(adulto_id):
+            return JsonResponse({
+                "ok": True,
+                "adulto": adulto_vinculado,
+                "compartir_ubicacion": False,
+                "puntos": [],
+            })
+
+        horas = request.GET.get("horas")
+        try:
+            horas = int(horas) if horas else 24
+            horas = max(1, min(horas, 72))
+        except Exception:
+            horas = 24
+
+        limite = request.GET.get("limite")
+        try:
+            limite = int(limite) if limite else 500
+            limite = max(50, min(limite, 2000))
+        except Exception:
+            limite = 500
+
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT lat, lng, precision_m, creado_en
+                FROM ubicacion_historial
+                WHERE usuario_id=%s
+                  AND creado_en >= (NOW() - INTERVAL %s HOUR)
+                ORDER BY creado_en ASC
+                LIMIT %s
+            """, [adulto_id, horas, limite])
+            rows = cursor.fetchall()
+
+        puntos = [
+            {
+                "lat": float(r[0]),
+                "lng": float(r[1]),
+                "accuracy": float(r[2]) if r[2] is not None else None,
+                "timestamp": r[3].isoformat() if r[3] else None,
+            }
+            for r in rows
+        ]
+
+        return JsonResponse({
+            "ok": True,
+            "adulto": adulto_vinculado,
+            "compartir_ubicacion": True,
+            "puntos": puntos,
+        })
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+@csrf_exempt
+def api_v1_ubicacion_estado(request):
+    try:
+        username = (request.GET.get("username") or "").strip()
+        if not username:
+            return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
+
+        mysql_user = verificar_usuario_en_bd(username)
+        if not mysql_user or mysql_user.get("tipo") != "adulto":
+            return JsonResponse({"ok": False, "error": "Solo adultos."}, status=403)
+
+        usuario_id = int(mysql_user["id"])
+        compartir = _mysql_get_compartir_ubicacion(usuario_id)
+
+        ubicacion_actualizada_en = None
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT ubicacion_actualizada_en FROM Usuarios WHERE Id_Usuario=%s LIMIT 1",
+                    [usuario_id],
+                )
+                row = cursor.fetchone()
+            if row and row[0]:
+                ubicacion_actualizada_en = row[0].isoformat()
+        except Exception:
+            ubicacion_actualizada_en = None
+
+        return JsonResponse({
+            "ok": True,
+            "compartir_ubicacion": compartir,
+            "ubicacion_actualizada_en": ubicacion_actualizada_en,
+        })
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+@csrf_exempt
+def api_v1_ubicacion_toggle(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Metodo no permitido"}, status=405)
+
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+    except Exception:
+        body = {}
+
+    try:
+        username = (body.get("username") or "").strip()
+        if not username:
+            return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
+
+        mysql_user = verificar_usuario_en_bd(username)
+        if not mysql_user or mysql_user.get("tipo") != "adulto":
+            return JsonResponse({"ok": False, "error": "Solo adultos."}, status=403)
+
+        usuario_id = int(mysql_user["id"])
+
+        if "activar" in body:
+            activar = bool(body.get("activar"))
+        else:
+            activar = not _mysql_get_compartir_ubicacion(usuario_id)
+
+        _mysql_set_compartir_ubicacion(usuario_id, activar)
+
+        return JsonResponse({
+            "ok": True,
+            "compartir_ubicacion": activar,
+            "ubicacion_actualizada_en": None,
+        })
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+@csrf_exempt
+def api_v1_ubicacion_ping(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Metodo no permitido"}, status=405)
+
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+    except Exception:
+        body = {}
+
+    try:
+        username = (body.get("username") or "").strip()
+        if not username:
+            return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
+
+        mysql_user = verificar_usuario_en_bd(username)
+        if not mysql_user or mysql_user.get("tipo") != "adulto":
+            return JsonResponse({"ok": False, "error": "Solo adultos."}, status=403)
+
+        usuario_id = int(mysql_user["id"])
+        if not _mysql_get_compartir_ubicacion(usuario_id):
+            return JsonResponse({"ok": False, "error": "Ubicacion desactivada."}, status=403)
+
+        lat = float(body.get("lat"))
+        lng = float(body.get("lng"))
+        precision = body.get("accuracy")
+        precision = float(precision) if precision is not None else None
+
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO ubicacion_actual (usuario_id, lat, lng, precision_m)
+                VALUES (%s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                  lat = VALUES(lat),
+                  lng = VALUES(lng),
+                  precision_m = VALUES(precision_m),
+                  actualizado_en = CURRENT_TIMESTAMP
+            """, [usuario_id, lat, lng, precision])
+
+            try:
+                cursor.execute("""
+                    UPDATE Usuarios SET ubicacion_actualizada_en=CURRENT_TIMESTAMP
+                    WHERE Id_Usuario=%s
+                """, [usuario_id])
+            except Exception:
+                pass
+
+        guardar_cada_seg = 180
+        guardar_si_movio_m = 30
+
+        ultimo = _mysql_get_ultimo_punto_historial(usuario_id)
+        debe_guardar = False
+
+        if not ultimo:
+            debe_guardar = True
+        else:
+            try:
+                diff = (timezone.now() - ultimo["creado_en"]).total_seconds()
+            except Exception:
+                diff = 999999
+
+            if diff >= guardar_cada_seg:
+                debe_guardar = True
+            else:
+                try:
+                    dist_m = _haversine_m(ultimo["lat"], ultimo["lng"], lat, lng)
+                    if dist_m >= guardar_si_movio_m:
+                        debe_guardar = True
+                except Exception:
+                    pass
+
+        if debe_guardar:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO ubicacion_historial (usuario_id, lat, lng, precision_m)
+                    VALUES (%s, %s, %s, %s)
+                """, [usuario_id, lat, lng, precision])
+
+        connection.commit()
+        return JsonResponse({"ok": True, "guardado_historial": bool(debe_guardar)})
+    except Exception:
+        return JsonResponse({"ok": False, "error": "Datos invalidos (lat/lng)."}, status=400)
     
 @login_required
 def api_v1_me(request):
@@ -4751,3 +5645,5 @@ def _sincronizar_usuario_django_activo(nombre, correo, activo):
 
     except Exception as e:
         print(f"❌ Error sincronizando usuario Django: {e}")
+
+

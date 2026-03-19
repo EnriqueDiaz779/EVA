@@ -62,6 +62,37 @@ class AuthService {
     }
   }
 
+  static Future<Map<String, dynamic>> registerAdulto({
+    required String nombreCompleto,
+    required String correo,
+    required String telefono,
+    required String password,
+  }) async {
+    final url = Uri.parse('$baseUrl/api/v1/register/adulto/');
+
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'nombre_completo': nombreCompleto,
+        'correo': correo,
+        'telefono': telefono,
+        'password': password,
+      }),
+    );
+
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode == 200 && data['ok'] == true) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isLoggedIn', true);
+      await prefs.setString('userData', jsonEncode(data['user']));
+      return data;
+    } else {
+      throw Exception(data['error'] ?? 'Error al registrar adulto mayor');
+    }
+  }
+
   static Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('isLoggedIn');
@@ -73,3 +104,4 @@ class AuthService {
     return prefs.getBool('isLoggedIn') ?? false;
   }
 }
+

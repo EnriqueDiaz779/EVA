@@ -1,0 +1,10 @@
+# Dependencias verificadas en el entorno virtual actual
+Django==6.0.3
+python-dotenv==1.2.2
+mysqlclient==2.2.8
+
+# Dependencias inferidas por imports del proyecto
+openai>=1.0.0
+requests>=2.31.0
+Pillow>=10.0.0
+pywebpush>=2.0.0

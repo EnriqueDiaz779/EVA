@@ -1,5 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:android_intent_plus/android_intent.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -132,8 +133,42 @@ class NotificacionService {
     }
   }
 
+  static Future<bool> asegurarPermisoAlarmasExactas() async {
+    final androidPlugin =
+        _plugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+
+    if (androidPlugin == null) return true;
+
+    final canSchedule = await androidPlugin.canScheduleExactNotifications();
+    if (canSchedule ?? false) {
+      return true;
+    }
+
+    final requested = await androidPlugin.requestExactAlarmsPermission();
+    if (requested ?? false) {
+      return true;
+    }
+
+    return false;
+  }
+
+  static Future<void> abrirAjustesAlarmasExactas() async {
+    final intent = AndroidIntent(
+      action: 'android.settings.REQUEST_SCHEDULE_EXACT_ALARM',
+    );
+    await intent.launch();
+  }
+
   static Future<void> programarAlarmaLocal(AlarmaLocal alarma) async {
     if (!alarma.activa) return;
+
+    final exactAllowed = await asegurarPermisoAlarmasExactas();
+    if (!exactAllowed) {
+      throw Exception(
+        'EVA necesita permiso de alarmas exactas para guardar la alarma.',
+      );
+    }
 
     if (alarma.esRecurrente) {
       for (final dia in alarma.diasSemana) {

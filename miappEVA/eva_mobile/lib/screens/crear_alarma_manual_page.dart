@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/alarmas_local_service.dart';
+import '../services/notificacion_service.dart';
 
 class CrearAlarmaManualPage extends StatefulWidget {
   const CrearAlarmaManualPage({super.key});
@@ -103,12 +104,43 @@ class _CrearAlarmaManualPageState extends State<CrearAlarmaManualPage> {
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al guardar: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      final message = e.toString().replaceFirst('Exception: ', '');
+      final exactAlarmIssue =
+          message.contains('exact_alarms_not_permitted') ||
+          message.contains('alarmas exactas');
+
+      if (exactAlarmIssue) {
+        final abrir = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Permiso requerido'),
+            content: const Text(
+              'Tu telefono no permite alarmas exactas. Necesitas habilitar ese permiso para que EVA pueda guardar y sonar a la hora correcta.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Abrir ajustes'),
+              ),
+            ],
+          ),
+        );
+
+        if (abrir == true) {
+          await NotificacionService.abrirAjustesAlarmasExactas();
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al guardar: $message'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {

@@ -1,8 +1,23 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import '../models/cuidador_agenda_item.dart';
 import '../models/cuidador_inicio_model.dart';
+import '../models/cuidador_location_model.dart';
 import '../services/cuidador_service.dart';
+import '../services/cuidador_agenda_service.dart';
+import '../services/cuidador_location_service.dart';
+import '../services/alarmas_local_service.dart';
 import '../services/auth_service.dart';
+import 'cuidador_agenda_page.dart';
+import 'cuidador_chat_page.dart';
+import 'cuidador_mapa_page.dart';
+import 'cuidador_receta_page.dart';
 import 'login_screen.dart';
+import '../widgets/cuidador_alarm_form_sheet.dart';
+import '../widgets/cuidador_cita_form_sheet.dart';
+import '../widgets/cuidador_map_card.dart';
+import '../widgets/cuidador_quick_actions_card.dart';
+import '../widgets/cuidador_summary_card.dart';
 
 class CuidadorScreen extends StatefulWidget {
   final String username;
@@ -17,14 +32,21 @@ class CuidadorScreen extends StatefulWidget {
 }
 
 class _CuidadorScreenState extends State<CuidadorScreen> {
+  static const Duration _locationRefreshInterval = Duration(seconds: 10);
+
   CuidadorInicioModel? _data;
+  List<CuidadorAgendaItem> _agendaItems = const [];
+  CuidadorLocationState? _locationState;
+  List<CuidadorLocationPoint> _routePoints = const [];
+  bool _routeEnabled = false;
+  DateTime _selectedAgendaDate = DateTime.now();
   bool _loading = true;
   bool _vinculando = false;
   String? _error;
   String? _errorCodigo;
+  Timer? _locationTimer;
 
   bool _mostrarPanelPerfil = false;
-
   final TextEditingController _codigoController = TextEditingController();
   bool _ocultarCodigo = true;
 
@@ -32,6 +54,9 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
   void initState() {
     super.initState();
     _cargarDatos();
+    _locationTimer = Timer.periodic(_locationRefreshInterval, (_) {
+      _refreshLocationOnly();
+    });
   }
 
   Future<void> _cargarDatos() async {
@@ -44,11 +69,24 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
       final result = await CuidadorService.obtenerInicioCuidador(
         username: widget.username,
       );
+      final tieneAdultoVinculado = result.adultoVinculado != null;
+      final agenda = tieneAdultoVinculado
+          ? await CuidadorAgendaService.obtenerAgenda()
+          : const <CuidadorAgendaItem>[];
+      final location = tieneAdultoVinculado
+          ? await CuidadorLocationService.obtenerUltimaUbicacion()
+          : null;
+      final history = tieneAdultoVinculado && _routeEnabled
+          ? await CuidadorLocationService.obtenerHistorial()
+          : const <CuidadorLocationPoint>[];
 
       if (!mounted) return;
 
       setState(() {
         _data = result;
+        _agendaItems = agenda;
+        _locationState = location;
+        _routePoints = history;
       });
     } catch (e) {
       if (!mounted) return;
@@ -129,8 +167,230 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
 
   @override
   void dispose() {
+    _locationTimer?.cancel();
     _codigoController.dispose();
     super.dispose();
+  }
+
+  Future<void> _openAgendaPage() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CuidadorAgendaPage(
+          initialItems: _agendaItems,
+          initialSelectedDate: _selectedAgendaDate,
+          onCreateAlarm: _crearAlarma,
+          onCreateAppointment: _crearCita,
+          onEditItem: _editarItem,
+          onDeleteItem: _eliminarItem,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _cargarDatos();
+  }
+
+  Future<void> _openMapaPage() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CuidadorMapaPage(
+          initialLocationState: _locationState,
+          initialRoutePoints: _routePoints,
+          initialRouteEnabled: _routeEnabled,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _refreshLocationOnly();
+  }
+
+  Future<void> _openRecetaPage() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const CuidadorRecetaPage(),
+      ),
+    );
+    if (!mounted) return;
+    await _cargarDatos();
+  }
+
+  Future<void> _openChatPage() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const CuidadorChatPage(),
+      ),
+    );
+  }
+
+  void _showPendingMessage(String sectionName) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$sectionName estara disponible en este acceso rapido muy pronto.'),
+      ),
+    );
+  }
+
+  Future<void> _refreshLocationOnly() async {
+    if (!mounted) return;
+    if (_data?.adultoVinculado == null) {
+      setState(() {
+        _locationState = null;
+        _routePoints = const [];
+      });
+      return;
+    }
+    try {
+      final location = await CuidadorLocationService.obtenerUltimaUbicacion();
+      final history = _routeEnabled
+          ? await CuidadorLocationService.obtenerHistorial()
+          : const <CuidadorLocationPoint>[];
+      if (!mounted) return;
+      setState(() {
+        _locationState = location;
+        _routePoints = history;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _toggleRoute() async {
+    setState(() {
+      _routeEnabled = !_routeEnabled;
+    });
+    await _refreshLocationOnly();
+  }
+
+  Future<void> _crearAlarma(DateTime date) async {
+    try {
+      final result = await showModalBottomSheet<CuidadorAgendaItem>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => CuidadorAlarmFormSheet(initialDate: date),
+      );
+      if (result == null) return;
+      await CuidadorAgendaService.crearItem(
+        title: result.title,
+        type: result.type,
+        timeText: result.timeText,
+        date: result.date,
+        daysText: result.daysText,
+        active: result.active,
+      );
+      setState(() {
+        _selectedAgendaDate = result.date ?? _selectedAgendaDate;
+      });
+      await _cargarDatos();
+      await AlarmasLocalService.sincronizarDesdeBackend();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Alarma creada correctamente.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
+  Future<void> _crearCita(DateTime date) async {
+    try {
+      final result = await showModalBottomSheet<CuidadorAgendaItem>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => CuidadorCitaFormSheet(initialDate: date),
+      );
+      if (result == null) return;
+      await CuidadorAgendaService.crearItem(
+        title: result.title,
+        type: result.type,
+        timeText: result.timeText,
+        date: result.date,
+        active: result.active,
+      );
+      setState(() {
+        _selectedAgendaDate = result.date ?? _selectedAgendaDate;
+      });
+      await _cargarDatos();
+      await AlarmasLocalService.sincronizarDesdeBackend();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cita creada correctamente.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
+  Future<void> _editarItem(CuidadorAgendaItem item) async {
+    try {
+      final result = await showModalBottomSheet<CuidadorAgendaItem>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => item.isAppointment
+            ? CuidadorCitaFormSheet(initialDate: item.date ?? DateTime.now(), initialItem: item)
+            : CuidadorAlarmFormSheet(initialDate: item.date ?? DateTime.now(), initialItem: item),
+      );
+      if (result == null) return;
+      setState(() {
+        _selectedAgendaDate = result.date ?? _selectedAgendaDate;
+      });
+      await CuidadorAgendaService.editarItem(result);
+      await _cargarDatos();
+      await AlarmasLocalService.sincronizarDesdeBackend();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Elemento actualizado correctamente.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
+  Future<void> _eliminarItem(CuidadorAgendaItem item) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar elemento'),
+        content: Text('Se eliminara "${item.title}".'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await CuidadorAgendaService.eliminarItem(item.id);
+      await _cargarDatos();
+      await AlarmasLocalService.sincronizarDesdeBackend();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Elemento eliminado correctamente.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
   }
 
   @override
@@ -171,7 +431,7 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
 
     final cuidador = _data!.cuidador;
     final adulto = _data!.adultoVinculado;
-    final bloqueado = _data!.bloqueadoPorVinculo;
+    final bloqueado = _data!.bloqueadoPorVinculo || adulto == null;
 
     return Scaffold(
       backgroundColor: const Color(0xFFDBDBDB),
@@ -291,9 +551,28 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
                     ],
                   ),
                 ),
-
-                const Expanded(
-                  child: SizedBox(),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _cargarDatos,
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+                      children: [
+                        CuidadorSummaryCard(
+                          caregiverName: cuidador.nombre,
+                          linkedAdultName: adulto?.nombre,
+                          hasLinkedAdult: adulto != null,
+                          currentDate: DateTime.now(),
+                        ),
+                        const SizedBox(height: 18),
+                        CuidadorQuickActionsCard(
+                          onAgendaTap: _openAgendaPage,
+                          onMapTap: _openMapaPage,
+                          onChatTap: _openChatPage,
+                          onRecipeTap: _openRecetaPage,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),

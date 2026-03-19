@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/alarma_local.dart';
+import 'alarmas_service.dart';
 import 'notificacion_service.dart';
 
 class AlarmasLocalService {
@@ -93,6 +94,10 @@ class AlarmasLocalService {
 
     await NotificacionService.cancelarAlarmaLocal(alarma);
 
+    if (alarma.source == 'remote' && alarma.remoteAlarmId != null) {
+      await AlarmasService.eliminarRemota(alarma.remoteAlarmId!);
+    }
+
     final nuevas = alarmas.where((e) => e.id != id).toList();
     await _guardarLista(nuevas);
   }
@@ -123,6 +128,74 @@ class AlarmasLocalService {
     }
   }
 
+  static Future<void> sincronizarDesdeBackend() async {
+    final remotas = await AlarmasService.obtenerTodas();
+    final actuales = await obtenerAlarmas();
+
+    final locales = actuales.where((a) => a.source != 'remote').toList();
+    final remotasActuales = actuales.where((a) => a.source == 'remote').toList();
+
+    for (final alarma in remotasActuales) {
+      await NotificacionService.cancelarAlarmaLocal(alarma);
+    }
+
+    final sincronizadas = <AlarmaLocal>[];
+    for (final raw in remotas) {
+      final remoteId = int.tryParse('${raw['id']}');
+      if (remoteId == null) continue;
+
+      final mensaje = (raw['mensaje'] ?? '').toString().trim();
+      final hora = (raw['hora'] ?? '').toString().trim();
+      final partes = hora.split(':');
+      if (partes.length < 2) continue;
+
+      final hour = int.tryParse(partes[0]) ?? 0;
+      final minute = int.tryParse(partes[1]) ?? 0;
+      final fechaIso = (raw['fecha'] ?? '').toString().trim();
+      final dias = _parseDiasSemana((raw['dias'] ?? '').toString());
+      final activa = raw['activa'] != false;
+
+      AlarmaLocal? previa;
+      for (final alarma in remotasActuales) {
+        if (alarma.remoteAlarmId == remoteId) {
+          previa = alarma;
+          break;
+        }
+      }
+
+      sincronizadas.add(
+        AlarmaLocal(
+          id: 100000000 + remoteId,
+          mensaje: mensaje.isEmpty ? 'Es hora de tu alarma' : mensaje,
+          hour: hour,
+          minute: minute,
+          fechaIso: fechaIso.isEmpty ? null : fechaIso,
+          diasSemana: dias,
+          activa: activa,
+          creadaEnIso: previa?.creadaEnIso ?? DateTime.now().toIso8601String(),
+          estado: previa?.estado ?? 'pendiente',
+          vecesPospuesta: previa?.vecesPospuesta ?? 0,
+          ultimaAccionIso: previa?.ultimaAccionIso,
+          source: 'remote',
+          remoteAlarmId: remoteId,
+        ),
+      );
+    }
+
+    final merged = <AlarmaLocal>[
+      ...locales,
+      ...sincronizadas,
+    ];
+
+    await _guardarLista(merged);
+
+    for (final alarma in sincronizadas) {
+      if (alarma.activa) {
+        await NotificacionService.programarAlarmaLocal(alarma);
+      }
+    }
+  }
+
   static DateTime _fechaProgramadaDesdeAlarma(AlarmaLocal alarma) {
     if (alarma.fechaIso != null && alarma.fechaIso!.isNotEmpty) {
       final f = DateTime.parse(alarma.fechaIso!);
@@ -141,6 +214,19 @@ class AlarmasLocalService {
     final actual = alarmas[index];
 
     await NotificacionService.cancelarAlarmaLocal(actual);
+
+    final esUnaSolaVez = actual.diasSemana.isEmpty;
+    if (esUnaSolaVez) {
+      if (actual.source == 'remote' && actual.remoteAlarmId != null) {
+        try {
+          await AlarmasService.eliminarRemota(actual.remoteAlarmId!);
+        } catch (_) {}
+      }
+
+      alarmas.removeAt(index);
+      await _guardarLista(alarmas);
+      return;
+    }
 
     alarmas[index] = actual.copyWith(
       activa: false,
@@ -181,5 +267,38 @@ class AlarmasLocalService {
     alarmas[index] = actualizada;
     await _guardarLista(alarmas);
     await NotificacionService.programarAlarmaLocal(actualizada);
+  }
+
+  static List<int> _parseDiasSemana(String raw) {
+    if (raw.trim().isEmpty) return const [];
+    const mapa = <String, int>{
+      'lun': 1,
+      'lunes': 1,
+      'mar': 2,
+      'martes': 2,
+      'mie': 3,
+      'miercoles': 3,
+      'miércoles': 3,
+      'mié': 3,
+      'jue': 4,
+      'jueves': 4,
+      'vie': 5,
+      'viernes': 5,
+      'sab': 6,
+      'sabado': 6,
+      'sábado': 6,
+      'sáb': 6,
+      'dom': 7,
+      'domingo': 7,
+    };
+
+    final out = <int>{};
+    for (final token in raw.split(RegExp(r'[,;/]'))) {
+      final key = token.trim().toLowerCase();
+      final value = mapa[key];
+      if (value != null) out.add(value);
+    }
+    final list = out.toList()..sort();
+    return list;
   }
 }

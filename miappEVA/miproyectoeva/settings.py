@@ -12,87 +12,87 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+
 from dotenv import load_dotenv
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# ✅ Cargar el archivo .env ANTES de leer las variables
+# Load environment variables from the project root before reading settings.
 load_dotenv(BASE_DIR / ".env")
 
-# 🔑 Leer la clave de OpenAI
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 if not OPENAI_API_KEY:
-    print("⚠️  Falta la variable de entorno OPENAI_API_KEY")
+    print("WARNING: Falta la variable de entorno OPENAI_API_KEY")
 
-# Carga el archivo .env desde la raíz del proyecto
-load_dotenv(BASE_DIR / ".env")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-ba$2gzccp=p(ks#elhp(lnhbogro97r$a#b41$j226*ftppkl^'
+SECRET_KEY = "django-insecure-ba$2gzccp=p(ks#elhp(lnhbogro97r$a#b41$j226*ftppkl^"
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '*']
+ALLOWED_HOSTS = ["127.0.0.1", "localhost", "*"]
+
 
 # Application definition
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'miappeva.apps.MiappevaConfig',
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "miappeva.apps.MiappevaConfig",
 ]
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = 'miproyectoeva.urls'
+ROOT_URLCONF = "miproyectoeva.urls"
 
 TEMPLATES = [
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'miappeva' / 'templates'],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [BASE_DIR / "miappeva" / "templates"],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
 ]
 
-WSGI_APPLICATION = 'miproyectoeva.wsgi.application'
+WSGI_APPLICATION = "miproyectoeva.wsgi.application"
 
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'eva_db',
-        'USER': 'eva_user',
-        'PASSWORD': 'TuPasswordSegura123!',
-        'HOST': '127.0.0.1',
-        'PORT': '3306',
-        'OPTIONS': {
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+    "default": {
+        "ENGINE": "django.db.backends.mysql",
+        "NAME": "eva_db",
+        "USER": "eva_user",
+        "PASSWORD": "TuPasswordSegura123!",
+        "HOST": "127.0.0.1",
+        "PORT": "3306",
+        "OPTIONS": {
+            "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
         },
     }
 }
@@ -103,16 +103,16 @@ DATABASES = {
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
 
@@ -120,9 +120,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = 'America/Mexico_City'
+TIME_ZONE = "America/Mexico_City"
 
 USE_I18N = True
 
@@ -132,36 +132,35 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = '/static/'
+STATIC_URL = "/static/"
 STATICFILES_DIRS = [
     BASE_DIR / "miappeva" / "static",
 ]
-MEDIA_URL = '/media/'
+MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
+# Sesiones (cookie de sesion muy larga y persistente)
+SESSION_ENGINE = "django.contrib.sessions.backends.db"
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 365 * 10
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_SAVE_EVERY_REQUEST = True
 
-# Sesiones (cookie de sesión muy larga y persistente)
-SESSION_ENGINE = 'django.contrib.sessions.backends.db'        # default, explícito por claridad
-SESSION_COOKIE_AGE = 60 * 60 * 24 * 365 * 10   # 10 años
-SESSION_EXPIRE_AT_BROWSER_CLOSE = False        # NO expira al cerrar navegador/app
-SESSION_SAVE_EVERY_REQUEST = True              # renueva expiración en cada visita
+# Rutas de autenticacion
+LOGIN_URL = "login"
+LOGIN_REDIRECT_URL = "inicio"
 
-# Rutas de autenticación (opcional pero útil)
-LOGIN_URL = 'login'
-LOGIN_REDIRECT_URL = 'inicio'
-
-# === Web Push / VAPID Keys ===
+# Web Push / VAPID Keys
 VAPID_PUBLIC_KEY = "BNyd3ExNE_YmtBL6SVHrH1cjlt3OHpExN5Jq17YUf_SGUfWmZGNx7D07ulrwfaP92g26G8KlC_EhH2ZpJMxabag"
 VAPID_PRIVATE_KEY = "SmThTKQNVOgEk8CQOQGd98oNEFr7TP75aOiiifkSNBs"
 
-# Carpeta donde Django los reunirá con collectstatic
+# Carpeta donde Django reunira los archivos estaticos con collectstatic
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MAPBOX_TOKEN_PUBLIC = os.getenv("MAPBOX_TOKEN_PUBLIC", "")

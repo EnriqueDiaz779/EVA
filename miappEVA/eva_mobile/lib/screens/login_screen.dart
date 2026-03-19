@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+
 import '../services/auth_service.dart';
-import 'registro_cuidador_screen.dart';
+import '../services/tts_service.dart';
 import 'cuidador_screen.dart';
+import 'registro_cuidador_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -13,9 +15,37 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _usernameFocusNode = FocusNode();
+  final _passwordFocusNode = FocusNode();
 
   bool _loading = false;
   String? _error;
+  bool _bienvenidaHablada = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initTts();
+    _usernameFocusNode.addListener(() {
+      if (_usernameFocusNode.hasFocus) {
+        TtsService.hablar('Por favor, escriba su nombre.');
+      }
+    });
+    _passwordFocusNode.addListener(() {
+      if (_passwordFocusNode.hasFocus) {
+        TtsService.hablar('Por favor, escriba su contraseña.');
+      }
+    });
+  }
+
+  Future<void> _initTts() async {
+    await TtsService.inicializar();
+    if (_bienvenidaHablada || !mounted) return;
+    _bienvenidaHablada = true;
+    await TtsService.hablar(
+      'Bienvenido a EVA. Por favor, introduzca su nombre y su contraseña para continuar. Si es cuidador, presione el boton registrate aqui que aparece en la parte inferior.',
+    );
+  }
 
   Future<void> _iniciarSesion() async {
     setState(() {
@@ -52,16 +82,31 @@ class _LoginScreenState extends State<LoginScreen> {
         _error = e.toString().replaceFirst('Exception: ', '');
       });
     } finally {
+      if (!mounted) return;
       setState(() {
         _loading = false;
       });
     }
   }
 
+  Future<void> _abrirRegistroCuidador() async {
+    await TtsService.hablar('Va a entrar al registro de cuidador.');
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const RegistroCuidadorScreen(),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
+    _usernameFocusNode.dispose();
+    _passwordFocusNode.dispose();
+    TtsService.detener();
     super.dispose();
   }
 
@@ -117,7 +162,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 24),
                         const Text(
-                          'Inicio de sesión',
+                          'Inicio de sesion',
                           style: TextStyle(
                             fontSize: 30,
                             fontWeight: FontWeight.w800,
@@ -126,7 +171,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 16),
                         const Text(
-                          '👋 Bienvenido a EVA.',
+                          'Bienvenido a EVA.',
                           style: TextStyle(
                             fontSize: 18,
                             color: Colors.black54,
@@ -156,6 +201,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ],
                         TextField(
                           controller: _usernameController,
+                          focusNode: _usernameFocusNode,
                           decoration: InputDecoration(
                             hintText: 'Escriba su nombre',
                             prefixIcon: const Icon(Icons.person),
@@ -171,6 +217,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 18),
                         TextField(
                           controller: _passwordController,
+                          focusNode: _passwordFocusNode,
                           obscureText: true,
                           decoration: InputDecoration(
                             hintText: 'Escriba su contraseña',
@@ -215,18 +262,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                           ),
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 20),
                         TextButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const RegistroCuidadorScreen(),
-                              ),
-                            );
-                          },
+                          onPressed: _abrirRegistroCuidador,
                           child: const Text(
-                            '¿Eres cuidador? Regístrate aquí',
+                            'Eres cuidador? Registrate aqui',
                             style: TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w600,

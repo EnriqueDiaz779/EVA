@@ -11,6 +11,8 @@ class AlarmaLocal {
   final String estado;
   final int vecesPospuesta;
   final String? ultimaAccionIso;
+  final String source;
+  final int? remoteAlarmId;
 
   const AlarmaLocal({
     required this.id,
@@ -24,6 +26,8 @@ class AlarmaLocal {
     required this.estado,
     required this.vecesPospuesta,
     required this.ultimaAccionIso,
+    this.source = 'local',
+    this.remoteAlarmId,
   });
 
   bool get esRecurrente => diasSemana.isNotEmpty;
@@ -47,6 +51,8 @@ class AlarmaLocal {
       'estado': estado,
       'vecesPospuesta': vecesPospuesta,
       'ultimaAccionIso': ultimaAccionIso,
+      'source': source,
+      'remoteAlarmId': remoteAlarmId,
     };
   }
 
@@ -65,6 +71,8 @@ class AlarmaLocal {
       estado: (json['estado'] ?? 'pendiente') as String,
       vecesPospuesta: json['vecesPospuesta'] as int? ?? 0,
       ultimaAccionIso: json['ultimaAccionIso'] as String?,
+      source: (json['source'] ?? 'local') as String,
+      remoteAlarmId: json['remoteAlarmId'] as int?,
     );
   }
 
@@ -80,6 +88,8 @@ class AlarmaLocal {
     String? estado,
     int? vecesPospuesta,
     String? ultimaAccionIso,
+    String? source,
+    int? remoteAlarmId,
   }) {
     return AlarmaLocal(
       id: id ?? this.id,
@@ -93,6 +103,8 @@ class AlarmaLocal {
       estado: estado ?? this.estado,
       vecesPospuesta: vecesPospuesta ?? this.vecesPospuesta,
       ultimaAccionIso: ultimaAccionIso ?? this.ultimaAccionIso,
+      source: source ?? this.source,
+      remoteAlarmId: remoteAlarmId ?? this.remoteAlarmId,
     );
   }
 }

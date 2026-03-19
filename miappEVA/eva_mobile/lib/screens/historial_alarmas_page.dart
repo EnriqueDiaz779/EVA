@@ -21,6 +21,7 @@ class _HistorialAlarmasPageState extends State<HistorialAlarmasPage> {
   }
 
   Future<void> _cargar() async {
+    await AlarmasLocalService.sincronizarDesdeBackend();
     final data = await AlarmasLocalService.obtenerAlarmas();
     if (!mounted) return;
     setState(() {
@@ -263,12 +264,15 @@ class _HistorialAlarmasPageState extends State<HistorialAlarmasPage> {
           ? const Center(child: CircularProgressIndicator())
           : _alarmas.isEmpty
               ? const Center(child: Text('No hay alarmas guardadas'))
-              : ListView.builder(
-                  itemCount: _alarmas.length,
-                  itemBuilder: (context, index) {
-                    final alarma = _alarmas[index];
-                    return _buildCard(alarma);
-                  },
+              : RefreshIndicator(
+                  onRefresh: _cargar,
+                  child: ListView.builder(
+                    itemCount: _alarmas.length,
+                    itemBuilder: (context, index) {
+                      final alarma = _alarmas[index];
+                      return _buildCard(alarma);
+                    },
+                  ),
                 ),
     );
   }

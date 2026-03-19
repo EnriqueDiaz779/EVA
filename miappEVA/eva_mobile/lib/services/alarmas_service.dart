@@ -39,6 +39,24 @@ class AlarmasService {
     return alarmas.map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
+  static Future<List<Map<String, dynamic>>> obtenerTodas() async {
+    final username = await _getUsername();
+    if (username == null || username.isEmpty) {
+      throw Exception('No encontré el usuario logueado.');
+    }
+
+    final uri = Uri.parse('$baseUrl/api/v1/alarmas/?username=$username');
+    final response = await http.get(uri);
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode != 200 || data['ok'] != true) {
+      throw Exception(data['error'] ?? 'No pude obtener las alarmas.');
+    }
+
+    final List alarmas = data['alarmas'] ?? [];
+    return alarmas.map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
   static Future<void> marcarEntregada(int id) async {
     final username = await _getUsername();
     if (username == null || username.isEmpty) {
@@ -64,4 +82,31 @@ class AlarmasService {
       );
     }
   }
+
+  static Future<void> eliminarRemota(int id) async {
+    final username = await _getUsername();
+    if (username == null || username.isEmpty) {
+      throw Exception('No encontré el usuario logueado.');
+    }
+
+    final uri = Uri.parse('$baseUrl/api/v1/alarmas/eliminar/');
+
+    final response = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'username': username,
+        'id': id,
+      }),
+    );
+
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode != 200 || data['ok'] != true) {
+      throw Exception(
+        data['error'] ?? 'No pude eliminar la alarma remota.',
+      );
+    }
+  }
 }
+
