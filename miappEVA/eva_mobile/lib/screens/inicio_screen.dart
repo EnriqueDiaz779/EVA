@@ -27,8 +27,7 @@ class InicioScreen extends StatefulWidget {
   State<InicioScreen> createState() => _InicioScreenState();
 }
 
-class _InicioScreenState extends State<InicioScreen> {
-  static const Duration _locationPingInterval = Duration(seconds: 10);
+class _InicioScreenState extends State<InicioScreen> with WidgetsBindingObserver {
 
   InicioModel? _inicio;
   bool _loading = true;
@@ -36,8 +35,8 @@ class _InicioScreenState extends State<InicioScreen> {
   bool _mostrarCodigo = false;
   bool _ubicacionActiva = false;
   bool _cargandoUbicacion = false;
-  Timer? _locationPingTimer;
   bool _enviandoEmergencia = false;
+  StreamSubscription<Position>? _locationSubscription;
 
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _speechDisponible = false;
@@ -47,10 +46,18 @@ class _InicioScreenState extends State<InicioScreen> {
   String _textoEscuchado = '';
   String _respuestaIA = '';
   bool _bienvenidaHablada = false;
+  bool get _mostrarFuncionesCuidador => _inicio?.estaVinculado == true;
+  bool get _mostrarAlarmaManual => _inicio?.estaVinculado != true;
+  bool _esperandoRegresoDeAjustesUbicacion = false;
+  bool _activandoUbicacionAutomaticamente = false;
+
+  bool _modalUbicacionMostrado = false;
+  bool _modalUbicacionAbierto = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initPantalla();
   }
 
@@ -58,20 +65,123 @@ class _InicioScreenState extends State<InicioScreen> {
     await _inicializarVoz();
     await TtsService.inicializar();
     await AlarmasLocalService.sincronizarDesdeBackend();
-    await _cargarEstadoUbicacion();
     await _cargarInicio();
+
+    if (_inicio?.estaVinculado == true) {
+      await _cargarEstadoUbicacion();
+
+      if (!_ubicacionActiva) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _mostrarModalUbicacionInicial();
+        });
+      }
+    } else {
+      _detenerStreamUbicacion();
+      if (mounted) {
+        setState(() {
+          _ubicacionActiva = false;
+        });
+      }
+    }
+
     _hablarBienvenida();
   }
 
   void _hablarBienvenida() {
     if (_bienvenidaHablada || !mounted) return;
+    if (_inicio == null) return;
+
     _bienvenidaHablada = true;
-      unawaited(
-        TtsService.hablar(
-          'Bienvenido a EVA. Presiona hablar para decirme lo que necesitas, lector de medicamentos para escanear un medicamento, alarma para crear una alarma manual, chat para comunicarte con tu cuidador, o ubicacion compartida para que tu cuidador pueda verla.',
-        ),
-      );
+
+    final estaVinculado = _inicio?.estaVinculado == true;
+
+    final mensaje = estaVinculado
+        ? 'Bienvenido a EVA. Presiona hablar para decirme lo que necesitas, lector de medicamentos para escanear un medicamento, chat para comunicarte con tu cuidador, botón de emergencia para pedir ayuda, o ubicación compartida para que tu cuidador pueda verla.'
+        : 'Bienvenido a EVA. Presiona hablar para decirme lo que necesitas, lector de medicamentos para escanear un medicamento, o alarma para crear una alarma manual.';
+
+    unawaited(TtsService.hablar(mensaje));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        _esperandoRegresoDeAjustesUbicacion &&
+        !_activandoUbicacionAutomaticamente) {
+      unawaited(_continuarActivacionUbicacionAlRegresar());
     }
+  }
+
+  Future<void> _continuarActivacionUbicacionAlRegresar() async {
+    _activandoUbicacionAutomaticamente = true;
+
+    try {
+      final enabled = await Geolocator.isLocationServiceEnabled();
+
+      if (!enabled) {
+        _esperandoRegresoDeAjustesUbicacion = false;
+        _mostrarMensajeUbicacion('La ubicación sigue apagada.');
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied) {
+        _esperandoRegresoDeAjustesUbicacion = false;
+        _mostrarMensajeUbicacion('Debes permitir la ubicación para continuar.');
+        return;
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        _esperandoRegresoDeAjustesUbicacion = false;
+        await Geolocator.openAppSettings();
+        _mostrarMensajeUbicacion(
+          'Activa el permiso de ubicación en ajustes de la aplicación.',
+        );
+        return;
+      }
+
+      final position = await _obtenerPosicionActual();
+      final estado = await AdultoLocationService.cambiarEstado(true);
+
+      await AdultoLocationService.enviarPing(
+        lat: position.latitude,
+        lng: position.longitude,
+        accuracy: position.accuracy,
+      );
+
+      _esperandoRegresoDeAjustesUbicacion = false;
+
+      if (!mounted) return;
+
+      setState(() {
+        _ubicacionActiva = estado.enabled;
+      });
+
+      _iniciarStreamUbicacion();
+      _cerrarModalUbicacionSiEstaAbierto();
+
+      await TtsService.hablar('Ubicación activada correctamente.');
+      _mostrarMensajeUbicacion(
+        'Ubicación activada correctamente.',
+        color: Colors.green,
+      );
+    } catch (_) {
+      _esperandoRegresoDeAjustesUbicacion = false;
+      _mostrarMensajeUbicacion('No pude activar la ubicación.');
+    } finally {
+      _activandoUbicacionAutomaticamente = false;
+
+      if (mounted) {
+        setState(() {
+          _cargandoUbicacion = false;
+        });
+      }
+    }
+  }
 
   Future<void> _cargarEstadoUbicacion() async {
     try {
@@ -83,9 +193,9 @@ class _InicioScreenState extends State<InicioScreen> {
       });
 
       if (_ubicacionActiva) {
-        _iniciarPingUbicacion();
+        _iniciarStreamUbicacion();
       } else {
-        _detenerPingUbicacion();
+        _detenerStreamUbicacion();
       }
     } catch (_) {}
   }
@@ -160,15 +270,30 @@ class _InicioScreenState extends State<InicioScreen> {
     }
   }
 
+  void _mostrarMensajeUbicacion(String mensaje, {Color? color}) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(mensaje),
+          backgroundColor: color,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+  }
+
   Future<void> _accionLectorMedicamentos() async {
     try {
       await TtsService.hablar(
-        'Selecciona una foto de tu medicamento para que pueda ayudarte a identificarlo.',
+        'Toma una foto de tu medicamento para que pueda ayudarte a identificarlo.',
       );
+
       final picker = ImagePicker();
 
       final XFile? foto = await picker.pickImage(
-        source: ImageSource.gallery,
+        source: ImageSource.camera, // 🔥 SOLO CÁMARA
         imageQuality: 85,
       );
 
@@ -221,7 +346,7 @@ class _InicioScreenState extends State<InicioScreen> {
   }
 
   Future<void> _cerrarSesion() async {
-    _detenerPingUbicacion();
+    _detenerStreamUbicacion();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('isLoggedIn');
     await prefs.remove('userData');
@@ -234,7 +359,7 @@ class _InicioScreenState extends State<InicioScreen> {
     );
   }
 
-  Future<void> _toggleUbicacion() async {
+  Future<void> _toggleUbicacion({bool desdeModal = false}) async {
     if (_cargandoUbicacion) return;
 
     setState(() {
@@ -244,76 +369,93 @@ class _InicioScreenState extends State<InicioScreen> {
     try {
       if (_ubicacionActiva) {
         final estado = await AdultoLocationService.cambiarEstado(false);
-        _detenerPingUbicacion();
+        _detenerStreamUbicacion();
+
         if (!mounted) return;
+
         setState(() {
           _ubicacionActiva = estado.enabled;
         });
-        await TtsService.hablar('Ubicacion desactivada.');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Ubicacion desactivada.')),
-        );
-      } else {
+
         await TtsService.hablar(
-          'Vamos a activar tu ubicacion para compartirla con tu cuidador.',
-        );
-        final enabled = await Geolocator.isLocationServiceEnabled();
-        if (!enabled) {
-          throw Exception('Activa la ubicacion del dispositivo para continuar.');
-        }
-
-        var permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied) {
-          permission = await Geolocator.requestPermission();
-        }
-
-        if (permission == LocationPermission.denied) {
-          throw Exception('No se concedio permiso de ubicacion.');
-        }
-
-        if (permission == LocationPermission.deniedForever) {
-          throw Exception('El permiso de ubicacion esta bloqueado. Activalo desde ajustes.');
-        }
-
-        final position = await _obtenerPosicionActual();
-        final estado = await AdultoLocationService.cambiarEstado(true);
-        await AdultoLocationService.enviarPing(
-          lat: position.latitude,
-          lng: position.longitude,
-          accuracy: position.accuracy,
+          'La ubicación compartida fue desactivada en EVA.',
         );
 
-        if (!mounted) return;
-        setState(() {
-          _ubicacionActiva = estado.enabled;
-        });
-        _iniciarPingUbicacion();
-        await TtsService.hablar('Ubicacion activada correctamente.');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Ubicacion activada correctamente.')),
+        _mostrarMensajeUbicacion(
+          'Ubicación compartida desactivada.',
+          color: Colors.red,
         );
+
+        return;
       }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+
+      await TtsService.hablar(
+        'Vamos a activar tu ubicación para compartirla con tu cuidador.',
       );
-    } finally {
+
+      final enabled = await Geolocator.isLocationServiceEnabled();
+
+      if (!enabled) {
+        _esperandoRegresoDeAjustesUbicacion = true;
+        await Geolocator.openLocationSettings();
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied) {
+        _mostrarMensajeUbicacion('Debes permitir la ubicación para continuar.');
+        return;
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        await Geolocator.openAppSettings();
+        _mostrarMensajeUbicacion(
+          'Activa el permiso de ubicación en ajustes de la aplicación.',
+        );
+        return;
+      }
+
+      final position = await _obtenerPosicionActual();
+      final estado = await AdultoLocationService.cambiarEstado(true);
+
+      await AdultoLocationService.enviarPing(
+        lat: position.latitude,
+        lng: position.longitude,
+        accuracy: position.accuracy,
+      );
+
       if (!mounted) return;
+
+      setState(() {
+        _ubicacionActiva = estado.enabled;
+      });
+
+      _iniciarStreamUbicacion();
+
+      if (_ubicacionActiva) {
+        _cerrarModalUbicacionSiEstaAbierto();
+      }
+
+      await TtsService.hablar('Ubicación activada correctamente.');
+      _mostrarMensajeUbicacion(
+        'Ubicación activada correctamente.',
+        color: Colors.green,
+      );
+    } catch (_) {
+      _mostrarMensajeUbicacion('Ocurrió un problema con la ubicación.');
+    } finally {
+      if (_esperandoRegresoDeAjustesUbicacion) return;
+      if (!mounted) return;
+
       setState(() {
         _cargandoUbicacion = false;
       });
     }
-  }
-
-  Future<void> _enviarUbicacionActual() async {
-    final position = await _obtenerPosicionActual();
-
-    await AdultoLocationService.enviarPing(
-      lat: position.latitude,
-      lng: position.longitude,
-      accuracy: position.accuracy,
-    );
   }
 
   Future<Position> _obtenerPosicionActual() async {
@@ -329,23 +471,43 @@ class _InicioScreenState extends State<InicioScreen> {
         return lastKnown;
       }
       throw Exception(
-        'No pude obtener la ubicacion del dispositivo. En el emulador, configura una ubicacion manual desde Extended controls > Location.',
+        'No pude obtener la ubicación del dispositivo.',
       );
     }
   }
 
-  void _iniciarPingUbicacion() {
-    _locationPingTimer?.cancel();
-    _locationPingTimer = Timer.periodic(_locationPingInterval, (_) async {
-      try {
-        await _enviarUbicacionActual();
-      } catch (_) {}
-    });
+  Future<void> _enviarUbicacionDesdePosition(Position position) async {
+    await AdultoLocationService.enviarPing(
+      lat: position.latitude,
+      lng: position.longitude,
+      accuracy: position.accuracy,
+    );
   }
 
-  void _detenerPingUbicacion() {
-    _locationPingTimer?.cancel();
-    _locationPingTimer = null;
+  void _iniciarStreamUbicacion() {
+    _locationSubscription?.cancel();
+
+    const locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10,
+    );
+
+    _locationSubscription = Geolocator.getPositionStream(
+      locationSettings: locationSettings,
+    ).listen(
+      (Position position) async {
+        try {
+          if (!_ubicacionActiva) return;
+          await _enviarUbicacionDesdePosition(position);
+        } catch (_) {}
+      },
+      onError: (_) {},
+    );
+  }
+
+  void _detenerStreamUbicacion() {
+    _locationSubscription?.cancel();
+    _locationSubscription = null;
   }
 
   Future<String> _obtenerUsernameGuardado() async {
@@ -371,25 +533,76 @@ class _InicioScreenState extends State<InicioScreen> {
 
     final confirmar = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Confirmar emergencia'),
-        content: const Text(
-          'Se enviará una alerta SOS a tu cuidador. ¿Deseas continuar?',
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(28),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Se enviará una alerta SOS a tu cuidador.\n\n¿Deseas continuar?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 24,
+                  height: 1.45,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF374151),
+                ),
+              ),
+              const SizedBox(height: 28),
+              SizedBox(
+                width: double.infinity,
+                height: 58,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE53935),
+                    foregroundColor: Colors.white,
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  child: const Text(
+                    'Enviar SOS',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                height: 58,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE5E7EB),
+                    foregroundColor: Colors.black,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  child: const Text(
+                    'Cancelar',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Enviar SOS'),
-          ),
-        ],
+        ),
       ),
     );
 
@@ -731,6 +944,112 @@ class _InicioScreenState extends State<InicioScreen> {
     );
   }
 
+  Future<void> _mostrarModalUbicacionInicial() async {
+    if (!mounted) return;
+    if (_modalUbicacionMostrado || _modalUbicacionAbierto) return;
+    if (!_mostrarFuncionesCuidador) return;
+    if (_ubicacionActiva) return;
+
+    _modalUbicacionMostrado = true;
+    _modalUbicacionAbierto = true;
+
+    await TtsService.hablar(
+      'Activa tu ubicación para que tu cuidador pueda verte en todo momento.',
+    );
+
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Activa tu ubicación para que tu cuidador pueda verte en todo momento',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 26,
+                  height: 1.4,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+              const SizedBox(height: 28),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _cargandoUbicacion
+                      ? null
+                      : () async {
+                          await _toggleUbicacion(desdeModal: true);
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2DBA34),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  child: Text(
+                    _cargandoUbicacion ? 'Procesando...' : 'Activar',
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: () {
+                    TtsService.detener();
+                    Navigator.pop(context);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE53935),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  child: const Text(
+                    'Cancelar',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    _modalUbicacionAbierto = false;
+  }
+
+  void _cerrarModalUbicacionSiEstaAbierto() {
+    if (!mounted) return;
+    if (_modalUbicacionAbierto &&
+        Navigator.of(context, rootNavigator: true).canPop()) {
+      Navigator.of(context, rootNavigator: true).pop();
+      _modalUbicacionAbierto = false;
+    }
+  }
+
   Widget _buildBotonSuperior({
     required String texto,
     required Color color,
@@ -766,6 +1085,48 @@ class _InicioScreenState extends State<InicioScreen> {
                   fontWeight: FontWeight.w800,
                 ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBotonEstadoUbicacion() {
+    return SizedBox(
+      height: 38,
+      child: ElevatedButton(
+        onPressed: _cargandoUbicacion ? null : () => _toggleUbicacion(),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _ubicacionActiva
+            ? const Color(0xFF93C5FD) 
+            : const Color(0xFFD1D5DB), 
+          foregroundColor: Colors.black,
+          elevation: 1,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          minimumSize: const Size(0, 38),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _ubicacionActiva ? Icons.location_on : Icons.location_off,
+              size: 20,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              _cargandoUbicacion
+                  ? '...'
+                  : _ubicacionActiva
+                      ? 'Activa'
+                      : 'Inactiva',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
           ],
         ),
       ),
@@ -886,89 +1247,6 @@ class _InicioScreenState extends State<InicioScreen> {
     );
   }
 
-  Widget _buildTarjetaUbicacion() {
-    final color = _ubicacionActiva ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7);
-    final border = _ubicacionActiva ? const Color(0xFF22C55E) : const Color(0xFFF59E0B);
-    final textColor = _ubicacionActiva ? const Color(0xFF166534) : const Color(0xFF92400E);
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: border, width: 2),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                _ubicacionActiva ? Icons.location_on : Icons.location_off,
-                color: textColor,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _ubicacionActiva ? 'Ubicacion compartida activa' : 'Ubicacion compartida desactivada',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: textColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _ubicacionActiva
-                ? 'Tu cuidador podra ver tu ubicacion mientras esta pantalla siga enviando actualizaciones.'
-                : 'Activa tu ubicacion para que el cuidador pueda verla en el mapa.',
-            style: const TextStyle(
-              fontSize: 15,
-              height: 1.4,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF374151),
-            ),
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _cargandoUbicacion ? null : _toggleUbicacion,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _ubicacionActiva
-                    ? const Color(0xFFEF4444)
-                    : const Color(0xFF173A8A),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              icon: Icon(
-                _ubicacionActiva ? Icons.location_off : Icons.my_location,
-              ),
-              label: Text(
-                _cargandoUbicacion
-                    ? 'Procesando...'
-                    : _ubicacionActiva
-                        ? 'Desactivar ubicacion'
-                        : 'Activar ubicacion',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildContenido() {
     return Center(
       child: ConstrainedBox(
@@ -1029,7 +1307,8 @@ class _InicioScreenState extends State<InicioScreen> {
                     onTap: _procesandoLector ? () {} : _accionLectorMedicamentos,
                     size: 190,
                   ),
-                  const SizedBox(height: 28),
+                  if (_mostrarAlarmaManual) ...[
+                    const SizedBox(height: 28),
                     _buildBotonPrincipal(
                       imagen: 'assets/images/alarmaBoton.png',
                       texto: 'Alarma',
@@ -1054,11 +1333,13 @@ class _InicioScreenState extends State<InicioScreen> {
                       },
                       size: 190,
                     ),
-                  const SizedBox(height: 28),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () async {
+                  ],
+                  if (_mostrarFuncionesCuidador) ...[
+                    const SizedBox(height: 28),
+                    _buildBotonPrincipal(
+                      imagen: 'assets/images/chat_boton.png',
+                      texto: 'Chat con cuidador',
+                      onTap: () async {
                         await TtsService.hablar(
                           'Aqui puedes comunicarte con tu cuidador usando tu voz.',
                         );
@@ -1070,82 +1351,16 @@ class _InicioScreenState extends State<InicioScreen> {
                           ),
                         );
                       },
-                      icon: const Icon(Icons.chat_bubble_outline),
-                      label: const Text(
-                        'Chat con cuidador',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF173A8A),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                      ),
+                      size: 190,
                     ),
-                  ),
-                  const SizedBox(height: 28),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _enviandoEmergencia ? null : _enviarEmergenciaSOS,
-                      icon: const Icon(Icons.warning_amber_rounded),
-                      label: Text(
-                        _enviandoEmergencia ? 'Enviando SOS...' : 'Botón de emergencia SOS',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFD32F2F),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                      ),
+                    const SizedBox(height: 28),
+                    _buildBotonPrincipal(
+                      imagen: 'assets/images/sos_boton.png',
+                      texto: _enviandoEmergencia ? 'Enviando SOS...' : 'Emergencia SOS',
+                      onTap: _enviandoEmergencia ? () {} : _enviarEmergenciaSOS,
+                      size: 190,
                     ),
-                  ),
-                  const SizedBox(height: 28),
-                  _buildTarjetaUbicacion(),
-                  const SizedBox(height: 28),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 18,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: const Color(0xFF93C5FD),
-                        width: 2,
-                      ),
-                      boxShadow: const [
-                        BoxShadow(
-                          blurRadius: 8,
-                          color: Colors.black12,
-                          offset: Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: const Text(
-                      'Esta información es solo una ayuda. Para mayor seguridad, consulte a su médico.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 20,
-                        height: 1.5,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1E3A8A),
-                      ),
-                    ),
-                  ),
+                  ],
                   const SizedBox(height: 24),
                 ],
               ),
@@ -1187,20 +1402,26 @@ class _InicioScreenState extends State<InicioScreen> {
                 ),
               ),
               const Spacer(),
-              _buildBotonSuperior(
-                texto: '',
-                color: const Color(0xFF22C55E),
-                icon: Icons.access_time_filled,
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const HistorialAlarmasPage(),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(width: 8),
+              if (_mostrarAlarmaManual) ...[
+                _buildBotonSuperior(
+                  texto: '',
+                  color: const Color(0xFF22C55E),
+                  icon: Icons.access_time_filled,
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const HistorialAlarmasPage(),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+              ],
+              if (_mostrarFuncionesCuidador) ...[
+                _buildBotonEstadoUbicacion(),
+                const SizedBox(width: 8),
+              ],
               _buildBotonSuperior(
                 texto: 'Salir',
                 color: const Color(0xFFEF4444),
@@ -1244,16 +1465,20 @@ class _InicioScreenState extends State<InicioScreen> {
                     ],
                   ),
                 ),
-      bottomNavigationBar: Container(
-        height: 14,
-        color: const Color(0xFF173A8A),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          height: 30,
+          color: const Color(0xFF173A8A),
+        ),
       ),
     );
   }
 
   @override
   void dispose() {
-    _detenerPingUbicacion();
+    WidgetsBinding.instance.removeObserver(this);
+    _detenerStreamUbicacion();
     unawaited(TtsService.detener());
     super.dispose();
   }

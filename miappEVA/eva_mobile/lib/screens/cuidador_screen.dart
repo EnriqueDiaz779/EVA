@@ -19,7 +19,6 @@ import 'login_screen.dart';
 import '../widgets/cuidador_alarm_form_sheet.dart';
 import '../widgets/cuidador_cita_form_sheet.dart';
 import '../widgets/cuidador_quick_actions_card.dart';
-import '../widgets/cuidador_summary_card.dart';
 
 class CuidadorScreen extends StatefulWidget {
   final String username;
@@ -657,7 +656,7 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
     return RichText(
       text: TextSpan(
         style: const TextStyle(
-          fontSize: 16,
+          fontSize: 14,
           color: Colors.black87,
         ),
         children: [
@@ -787,7 +786,7 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 12),
                   const Text(
                     'Se encuentra en la esquina inferior izquierda de la pantalla del adulto mayor.',
                     textAlign: TextAlign.center,
@@ -847,9 +846,11 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFDBDBDB),
-      bottomNavigationBar: Container(
-        height: 14,
-        color: const Color(0xFF123C92),
+      bottomNavigationBar: SafeArea(
+        child: Container(
+          height: 20,
+          color: const Color(0xFF123C92),
+        ),
       ),
       body: GestureDetector(
         onTap: () {
@@ -863,111 +864,112 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
           children: [
             Column(
               children: [
-                Container(
-                  height: 95,
-                  padding: const EdgeInsets.only(
-                    left: 16,
-                    right: 16,
-                    top: 36,
-                  ),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF123C92),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black26,
-                        blurRadius: 6,
-                        offset: Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(22),
-                            child: Image.asset(
-                              'assets/images/eva.png',
-                              width: 44,
-                              height: 44,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          const Text(
-                            'EVA',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 28,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          GestureDetector(
-                            onTap: _cerrarSesion,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 10,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE53935),
-                                borderRadius: BorderRadius.circular(14),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Colors.black26,
-                                    blurRadius: 4,
-                                    offset: Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: const Row(
-                                children: [
-                                  Icon(
-                                    Icons.logout,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
-                                  SizedBox(width: 6),
-                                  Text(
-                                    'Salir',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ],
+                SafeArea(
+                  bottom: false,
+                  child: Container(
+                    height: 70,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                    ),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF123C92),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 6,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(22),
+                              child: Image.asset(
+                                'assets/images/eva.png',
+                                width: 44,
+                                height: 44,
+                                fit: BoxFit.cover,
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 10),
-                          GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _mostrarPanelPerfil = !_mostrarPanelPerfil;
-                              });
-                            },
-                            child: Container(
-                              width: 42,
-                              height: 42,
-                              decoration: const BoxDecoration(
+                            const SizedBox(width: 12),
+                            const Text(
+                              'EVA',
+                              style: TextStyle(
                                 color: Colors.white,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.person,
-                                color: Color(0xFF123C92),
+                                fontSize: 28,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            GestureDetector(
+                              onTap: _cerrarSesion,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE53935),
+                                  borderRadius: BorderRadius.circular(14),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Colors.black26,
+                                      blurRadius: 4,
+                                      offset: Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: const Row(
+                                  children: [
+                                    Icon(
+                                      Icons.logout,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Salir',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _mostrarPanelPerfil = !_mostrarPanelPerfil;
+                                });
+                              },
+                              child: Container(
+                                width: 42,
+                                height: 42,
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.person,
+                                  color: Color(0xFF123C92),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 Expanded(
@@ -979,13 +981,6 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
                         _buildEmergenciaCard(),
                         if (_emergenciasPendientes.isNotEmpty)
                           const SizedBox(height: 18),
-                        CuidadorSummaryCard(
-                          caregiverName: cuidador.nombre,
-                          linkedAdultName: adulto?.nombre,
-                          hasLinkedAdult: adulto != null,
-                          currentDate: DateTime.now(),
-                        ),
-                        const SizedBox(height: 18),
                         CuidadorQuickActionsCard(
                           onAgendaTap: _openAgendaPage,
                           onMapTap: _openMapaPage,
@@ -1005,7 +1000,7 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
                 child: GestureDetector(
                   onTap: () {},
                   child: Container(
-                    width: 310,
+                    width: 260,
                     margin: const EdgeInsets.only(right: 0),
                     decoration: const BoxDecoration(
                       color: Colors.white,
@@ -1022,14 +1017,14 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
                       ],
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
                             'Perfil del cuidador',
                             style: TextStyle(
-                              fontSize: 24,
+                              fontSize: 20,
                               fontWeight: FontWeight.w800,
                               color: Colors.black87,
                             ),
@@ -1050,14 +1045,14 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
                                 ? 'Sin teléfono'
                                 : cuidador.telefono,
                           ),
-                          const SizedBox(height: 22),
+                          const SizedBox(height: 14),
                           Divider(color: Colors.grey.shade300),
                           const SizedBox(height: 18),
                           const Center(
                             child: Text(
                               'Perfil del adulto',
                               style: TextStyle(
-                                fontSize: 21,
+                                fontSize: 18,
                                 fontWeight: FontWeight.w800,
                                 color: Colors.black87,
                               ),
@@ -1066,7 +1061,7 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
                           const SizedBox(height: 16),
                           Container(
                             width: double.infinity,
-                            padding: const EdgeInsets.all(14),
+                            padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
                               color: const Color(0xFFF7F7F7),
                               borderRadius: BorderRadius.circular(18),
