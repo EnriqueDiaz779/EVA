@@ -5068,6 +5068,200 @@ def api_v1_ubicacion_ping(request):
         return JsonResponse({"ok": True, "guardado_historial": bool(debe_guardar)})
     except Exception:
         return JsonResponse({"ok": False, "error": "Datos invalidos (lat/lng)."}, status=400)
+
+
+@csrf_exempt
+def api_v1_emergencia_crear(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Metodo no permitido"}, status=405)
+
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+    except Exception:
+        body = {}
+
+    try:
+        username = (body.get("username") or "").strip()
+        if not username:
+            return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
+
+        mysql_user = verificar_usuario_en_bd(username)
+        if not mysql_user or mysql_user.get("tipo") != "adulto":
+            return JsonResponse({"ok": False, "error": "Solo adultos pueden emitir SOS."}, status=403)
+
+        adulto_id = int(mysql_user["id"])
+        cuidador = _mysql_get_cuidador_por_adulto(adulto_id)
+
+        if not cuidador:
+            return JsonResponse({"ok": False, "error": "No hay cuidador vinculado."}, status=409)
+
+        lat = body.get("lat")
+        lng = body.get("lng")
+
+        try:
+            lat = float(lat) if lat is not None else None
+        except Exception:
+            lat = None
+
+        try:
+            lng = float(lng) if lng is not None else None
+        except Exception:
+            lng = None
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id_emergencia FROM emergencia "
+                "WHERE adulto_id=%s AND estado='enviada' "
+                "AND creado_en >= (NOW() - INTERVAL 45 SECOND) "
+                "ORDER BY id_emergencia DESC LIMIT 1",
+                [adulto_id],
+            )
+            row_recent = cursor.fetchone()
+
+            if row_recent:
+                return JsonResponse({
+                    "ok": True,
+                    "duplicada": True,
+                    "id_emergencia": int(row_recent[0]),
+                })
+
+            if lat is None or lng is None:
+                cursor.execute(
+                    "SELECT lat, lng FROM ubicacion_actual WHERE usuario_id=%s LIMIT 1",
+                    [adulto_id],
+                )
+                row_pos = cursor.fetchone()
+                lat = float(row_pos[0]) if row_pos and row_pos[0] is not None else None
+                lng = float(row_pos[1]) if row_pos and row_pos[1] is not None else None
+
+            cursor.execute(
+                "INSERT INTO emergencia (lat, lng, estado, creado_en, adulto_id, cuidador_id) "
+                "VALUES (%s, %s, 'enviada', NOW(), %s, %s)",
+                [lat, lng, adulto_id, int(cuidador["id"])],
+            )
+            emergencia_id = int(cursor.lastrowid)
+
+        return JsonResponse({
+            "ok": True,
+            "id_emergencia": emergencia_id,
+            "estado": "enviada",
+            "adulto_id": adulto_id,
+            "adulto_nombre": mysql_user.get("nombre"),
+            "cuidador_id": int(cuidador["id"]),
+            "cuidador_nombre": cuidador.get("nombre"),
+            "lat": lat,
+            "lng": lng,
+        })
+
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+@csrf_exempt
+def api_v1_emergencia_pendientes(request):
+    try:
+        username = (request.GET.get("username") or "").strip()
+        if not username:
+            return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
+
+        mysql_user = verificar_usuario_en_bd(username)
+        if not mysql_user or mysql_user.get("tipo") != "cuidador":
+            return JsonResponse({"ok": False, "error": "Solo cuidadores."}, status=403)
+
+        cuidador_id = int(mysql_user["id"])
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT e.id_emergencia, e.lat, e.lng, e.estado, e.creado_en, e.atendido_en, "
+                "u.Id_Usuario, u.Nombre_Completo "
+                "FROM emergencia e "
+                "INNER JOIN Usuarios u ON u.Id_Usuario = e.adulto_id "
+                "WHERE e.cuidador_id=%s AND e.estado IN ('enviada', 'vista') "
+                "ORDER BY e.creado_en DESC LIMIT 20",
+                [cuidador_id],
+            )
+            rows = cursor.fetchall()
+
+        emergencias = []
+        for r in rows:
+            emergencias.append({
+                "id_emergencia": int(r[0]),
+                "lat": float(r[1]) if r[1] is not None else None,
+                "lng": float(r[2]) if r[2] is not None else None,
+                "estado": r[3],
+                "creado_en": r[4].isoformat() if r[4] else None,
+                "atendido_en": r[5].isoformat() if r[5] else None,
+                "adulto": {
+                    "id": int(r[6]),
+                    "nombre": r[7],
+                }
+            })
+
+        return JsonResponse({"ok": True, "emergencias": emergencias})
+
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+    
+@csrf_exempt
+def api_v1_emergencia_actualizar(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "Metodo no permitido"}, status=405)
+
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+    except Exception:
+        body = {}
+
+    try:
+        username = (body.get("username") or "").strip()
+        if not username:
+            return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
+
+        mysql_user = verificar_usuario_en_bd(username)
+        if not mysql_user or mysql_user.get("tipo") != "cuidador":
+            return JsonResponse({"ok": False, "error": "Solo cuidadores."}, status=403)
+
+        cuidador_id = int(mysql_user["id"])
+
+        emergencia_id = body.get("id_emergencia")
+        estado = (body.get("estado") or "").strip().lower()
+
+        try:
+            emergencia_id = int(emergencia_id)
+        except Exception:
+            return JsonResponse({"ok": False, "error": "id_emergencia invalido."}, status=400)
+
+        if estado not in ("vista", "atendida", "cerrada"):
+            return JsonResponse({"ok": False, "error": "Estado invalido."}, status=400)
+
+        with connection.cursor() as cursor:
+            if estado in ("atendida", "cerrada"):
+                cursor.execute(
+                    "UPDATE emergencia "
+                    "SET estado=%s, atendido_en=NOW() "
+                    "WHERE id_emergencia=%s AND cuidador_id=%s",
+                    [estado, emergencia_id, cuidador_id],
+                )
+            else:
+                cursor.execute(
+                    "UPDATE emergencia "
+                    "SET estado=%s "
+                    "WHERE id_emergencia=%s AND cuidador_id=%s",
+                    [estado, emergencia_id, cuidador_id],
+                )
+
+            updated = int(cursor.rowcount or 0)
+
+        if updated <= 0:
+            return JsonResponse({"ok": False, "error": "Emergencia no encontrada."}, status=404)
+
+        return JsonResponse({
+            "ok": True,
+            "id_emergencia": emergencia_id,
+            "estado": estado,
+        })
+
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
     
 @login_required
 def api_v1_me(request):

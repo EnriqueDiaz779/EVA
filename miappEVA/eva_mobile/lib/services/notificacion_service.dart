@@ -17,6 +17,11 @@ class NotificacionService {
   static const String _channelName = 'Alarmas EVA';
   static const String _channelDescription = 'Canal de alarmas reales de EVA';
 
+  static const String _emergencyChannelId = 'eva_emergencias_v2';
+  static const String _emergencyChannelName = 'Emergencias EVA';
+  static const String _emergencyChannelDescription =
+      'Canal de emergencias SOS de EVA';
+
   static Future<void> inicializar() async {
     tz.initializeTimeZones();
 
@@ -64,6 +69,18 @@ class NotificacionService {
         sound: RawResourceAndroidNotificationSound('alarma_eva'),
       ),
     );
+
+    await androidPlugin?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        _emergencyChannelId,
+        _emergencyChannelName,
+        description: _emergencyChannelDescription,
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+        sound: RawResourceAndroidNotificationSound('emergencia_sos'),
+      ),
+    );
   }
 
   static NotificationDetails _notificationDetails() {
@@ -99,6 +116,25 @@ class NotificacionService {
     return const NotificationDetails(android: androidDetails);
   }
 
+  static NotificationDetails _emergencyNotificationDetails() {
+    const androidDetails = AndroidNotificationDetails(
+      _emergencyChannelId,
+      _emergencyChannelName,
+      channelDescription: _emergencyChannelDescription,
+      importance: Importance.max,
+      priority: Priority.max,
+      playSound: true,
+      sound: RawResourceAndroidNotificationSound('emergencia_sos'),
+      enableVibration: true,
+      category: AndroidNotificationCategory.call,
+      visibility: NotificationVisibility.public,
+      fullScreenIntent: true,
+      audioAttributesUsage: AudioAttributesUsage.alarm,
+    );
+
+    return const NotificationDetails(android: androidDetails);
+  }
+
   static Future<void> mostrarNotificacionInstantanea({
     required String titulo,
     required String cuerpo,
@@ -108,6 +144,19 @@ class NotificacionService {
       titulo,
       cuerpo,
       _notificationDetails(),
+    );
+  }
+
+  static Future<void> mostrarNotificacionEmergencia({
+    required int id,
+    required String titulo,
+    required String cuerpo,
+  }) async {
+    await _plugin.show(
+      id,
+      titulo,
+      cuerpo,
+      _emergencyNotificationDetails(),
     );
   }
 
@@ -244,6 +293,10 @@ class NotificacionService {
     }
 
     await _plugin.cancel(alarma.id);
+  }
+
+  static Future<void> cancelarNotificacionEmergencia(int id) async {
+    await _plugin.cancel(id);
   }
 
   static Future<void> cancelarTodas() async {

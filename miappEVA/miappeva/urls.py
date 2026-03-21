@@ -71,6 +71,9 @@ urlpatterns = [
     path("api/v1/chat/enviar/", views.api_v1_chat_enviar, name="api_v1_chat_enviar"),
     path("api/v1/chat/marcar-visto/", views.api_v1_chat_marcar_visto, name="api_v1_chat_marcar_visto"),
     path('vincular-adulto-por-codigo/', views.vincular_adulto_por_codigo, name='vincular_adulto_por_codigo'),
+    path("api/v1/emergencia/crear/", views.api_v1_emergencia_crear, name="api_v1_emergencia_crear"),
+    path("api/v1/emergencia/pendientes/", views.api_v1_emergencia_pendientes, name="api_v1_emergencia_pendientes"),
+    path("api/v1/emergencia/actualizar/", views.api_v1_emergencia_actualizar, name="api_v1_emergencia_actualizar"),
 
     # --- Órdenes de voz / OpenAI ---
     path("registrar-openai/", views.registrar_orden_openai, name="registrar_orden_openai"),

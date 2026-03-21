@@ -17,6 +17,8 @@ import '../services/adulto_location_service.dart';
 import '../services/tts_service.dart';
 import 'adulto_chat_page.dart';
 import 'crear_alarma_manual_page.dart';
+import '../services/emergencia_service.dart';
+import 'dart:convert';
 
 class InicioScreen extends StatefulWidget {
   const InicioScreen({super.key});
@@ -35,6 +37,7 @@ class _InicioScreenState extends State<InicioScreen> {
   bool _ubicacionActiva = false;
   bool _cargandoUbicacion = false;
   Timer? _locationPingTimer;
+  bool _enviandoEmergencia = false;
 
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _speechDisponible = false;
@@ -343,6 +346,109 @@ class _InicioScreenState extends State<InicioScreen> {
   void _detenerPingUbicacion() {
     _locationPingTimer?.cancel();
     _locationPingTimer = null;
+  }
+
+  Future<String> _obtenerUsernameGuardado() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userData = prefs.getString('userData');
+
+    if (userData == null || userData.isEmpty) {
+      throw Exception('No se encontró la sesión del usuario.');
+    }
+
+    final data = jsonDecode(userData);
+    final username = (data['username'] ?? '').toString().trim();
+
+    if (username.isEmpty) {
+      throw Exception('No se encontró el username del usuario.');
+    }
+
+    return username;
+  }
+
+  Future<void> _enviarEmergenciaSOS() async {
+    if (_enviandoEmergencia) return;
+
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Confirmar emergencia'),
+        content: const Text(
+          'Se enviará una alerta SOS a tu cuidador. ¿Deseas continuar?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Enviar SOS'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar != true) return;
+
+    setState(() {
+      _enviandoEmergencia = true;
+    });
+
+    try {
+      final username = await _obtenerUsernameGuardado();
+
+      double? lat;
+      double? lng;
+
+      try {
+        final position = await _obtenerPosicionActual();
+        lat = position.latitude;
+        lng = position.longitude;
+
+        try {
+          await AdultoLocationService.enviarPing(
+            lat: lat,
+            lng: lng,
+            accuracy: position.accuracy,
+          );
+        } catch (_) {}
+      } catch (_) {}
+
+      final resp = await EmergenciaService.crearEmergencia(
+        username: username,
+        lat: lat,
+        lng: lng,
+      );
+
+      if (!mounted) return;
+
+      final duplicada = resp['duplicada'] == true;
+
+      _mostrarDialogoRespuesta(
+        titulo: 'SOS',
+        mensaje: duplicada
+            ? 'La alerta ya había sido enviada hace unos segundos.'
+            : 'Tu alerta SOS fue enviada correctamente al cuidador.',
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      _mostrarDialogoRespuesta(
+        titulo: 'Error',
+        mensaje: e.toString().replaceFirst('Exception: ', ''),
+      );
+    } finally {
+      if (!mounted) return;
+
+      setState(() {
+        _enviandoEmergencia = false;
+      });
+    }
   }
 
   int? _mapearDiaTextoANumero(String dia) {
@@ -974,6 +1080,29 @@ class _InicioScreenState extends State<InicioScreen> {
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF173A8A),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _enviandoEmergencia ? null : _enviarEmergenciaSOS,
+                      icon: const Icon(Icons.warning_amber_rounded),
+                      label: Text(
+                        _enviandoEmergencia ? 'Enviando SOS...' : 'Botón de emergencia SOS',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFD32F2F),
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
