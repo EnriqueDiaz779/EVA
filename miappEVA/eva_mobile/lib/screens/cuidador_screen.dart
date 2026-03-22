@@ -3,12 +3,15 @@ import 'dart:async';
 import '../models/cuidador_agenda_item.dart';
 import '../models/cuidador_inicio_model.dart';
 import '../models/cuidador_location_model.dart';
+import '../models/cuidador_medicamento_alerta.dart';
 import '../models/emergencia_model.dart';
 import '../services/cuidador_service.dart';
 import '../services/cuidador_agenda_service.dart';
+import '../services/cuidador_alertas_service.dart';
 import '../services/cuidador_location_service.dart';
 import '../services/alarmas_local_service.dart';
 import '../services/auth_service.dart';
+import '../services/chat_service.dart';
 import '../services/emergencia_service.dart';
 import '../services/notificacion_service.dart';
 import 'cuidador_agenda_page.dart';
@@ -35,6 +38,8 @@ class CuidadorScreen extends StatefulWidget {
 class _CuidadorScreenState extends State<CuidadorScreen> {
   static const Duration _locationRefreshInterval = Duration(seconds: 10);
   static const Duration _emergencyRefreshInterval = Duration(seconds: 5);
+  static const Duration _chatRefreshInterval = Duration(seconds: 8);
+  static const Duration _medicationAlertRefreshInterval = Duration(seconds: 30);
 
   CuidadorInicioModel? _data;
   List<CuidadorAgendaItem> _agendaItems = const [];
@@ -48,12 +53,18 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
   bool _vinculando = false;
   bool _actualizandoEmergencia = false;
   int? _ultimoIdEmergenciaNotificado;
+  int _ultimoChatIdNotificado = 0;
+  bool? _ultimoEstadoSinSenal;
+  bool _chatAbierto = false;
+  final Set<String> _alertasMedicamentoNotificadas = <String>{};
 
   String? _error;
   String? _errorCodigo;
 
   Timer? _locationTimer;
   Timer? _emergencyTimer;
+  Timer? _chatTimer;
+  Timer? _medicationAlertTimer;
 
   bool _mostrarPanelPerfil = false;
   final TextEditingController _codigoController = TextEditingController();
@@ -71,12 +82,22 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
     _emergencyTimer = Timer.periodic(_emergencyRefreshInterval, (_) {
       _refreshEmergenciasOnly();
     });
+
+    _chatTimer = Timer.periodic(_chatRefreshInterval, (_) {
+      _refreshChatOnly();
+    });
+
+    _medicationAlertTimer = Timer.periodic(_medicationAlertRefreshInterval, (_) {
+      _refreshMedicamentosNoConfirmadosOnly();
+    });
   }
 
   @override
   void dispose() {
     _locationTimer?.cancel();
     _emergencyTimer?.cancel();
+    _chatTimer?.cancel();
+    _medicationAlertTimer?.cancel();
     _codigoController.dispose();
     super.dispose();
   }
@@ -112,9 +133,15 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
             )
           : const <EmergenciaModel>[];
 
+      if (tieneAdultoVinculado) {
+        await AlarmasLocalService.sincronizarDesdeBackend();
+      }
+
       if (!mounted) return;
 
       await _notificarEmergenciaNueva(emergencias);
+      await _refreshChatOnly(notify: false);
+      await _refreshMedicamentosNoConfirmadosOnly(notify: false);
 
       setState(() {
         _data = result;
@@ -122,6 +149,7 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
         _locationState = location;
         _routePoints = history;
         _emergenciasPendientes = emergencias;
+        _ultimoEstadoSinSenal = location?.sinSenal;
       });
     } catch (e) {
       if (!mounted) return;
@@ -171,6 +199,7 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
     }
 
     try {
+      final estadoPrevioSinSenal = _locationState?.sinSenal;
       final location = await CuidadorLocationService.obtenerUltimaUbicacion();
       final history = _routeEnabled
           ? await CuidadorLocationService.obtenerHistorial()
@@ -178,9 +207,23 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
 
       if (!mounted) return;
 
+      if (location.adult != null &&
+          location.compartirUbicacion &&
+          location.sinSenal &&
+          estadoPrevioSinSenal == false) {
+        final nombreAdulto = location.adult!.nombre.trim();
+        await NotificacionService.mostrarNotificacionAtencion(
+          id: 700000 + (location.adult!.id ?? 0),
+          titulo: 'Sin señal',
+          cuerpo:
+              '${nombreAdulto.isEmpty ? 'El adulto mayor' : nombreAdulto} no ha enviado ubicación reciente.',
+        );
+      }
+
       setState(() {
         _locationState = location;
         _routePoints = history;
+        _ultimoEstadoSinSenal = location.sinSenal;
       });
     } catch (_) {}
   }
@@ -370,12 +413,82 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
   }
 
   Future<void> _openChatPage() async {
+    _chatAbierto = true;
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => const CuidadorChatPage(),
       ),
     );
+    _chatAbierto = false;
+    await _refreshChatOnly(notify: false);
+  }
+
+  Future<void> _refreshChatOnly({bool notify = true}) async {
+    if (!mounted) return;
+    if (_data?.adultoVinculado == null) {
+      _ultimoChatIdNotificado = 0;
+      return;
+    }
+
+    try {
+      final result = await ChatService.obtenerMensajes(limit: 20);
+      final entrantesNoVistos = result.mensajes.where((message) {
+        return message.emisorId != result.emisorId &&
+            message.escuchado == false &&
+            message.id > _ultimoChatIdNotificado;
+      }).toList();
+
+      if (notify && !_chatAbierto && entrantesNoVistos.isNotEmpty) {
+        final ultimo = entrantesNoVistos.last;
+        await NotificacionService.mostrarNotificacionMensajeParaCuidador(
+          id: 500000 + ultimo.id,
+          cuerpo: ultimo.mensaje,
+        );
+      }
+
+      if (result.lastId > _ultimoChatIdNotificado) {
+        _ultimoChatIdNotificado = result.lastId;
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _refreshMedicamentosNoConfirmadosOnly({
+    bool notify = true,
+  }) async {
+    if (!mounted) return;
+    if (_data?.adultoVinculado == null) {
+      _alertasMedicamentoNotificadas.clear();
+      return;
+    }
+
+    try {
+      final alertas = await CuidadorAlertasService.obtenerMedicamentosNoConfirmados();
+      final activas = alertas.map((e) => e.notificationKey).toSet();
+      _alertasMedicamentoNotificadas.removeWhere((key) => !activas.contains(key));
+
+      if (!notify) return;
+
+      final nuevas = alertas.where((alerta) {
+        return !_alertasMedicamentoNotificadas.contains(alerta.notificationKey);
+      }).toList();
+
+      if (nuevas.isEmpty) return;
+
+      final alerta = nuevas.first;
+      final texto = alerta.mensaje.trim();
+      await NotificacionService.mostrarNotificacionAtencion(
+        id: 800000 + alerta.id,
+        titulo: 'Medicamento no confirmado',
+        cuerpo: texto.isEmpty
+            ? 'El adulto no ha confirmado un medicamento reciente.'
+            : '$texto. El adulto aún no lo confirma.',
+      );
+
+      for (final CuidadorMedicamentoAlerta item in nuevas) {
+        _alertasMedicamentoNotificadas.add(item.notificationKey);
+      }
+    } catch (_) {}
   }
 
   Future<void> _toggleRoute() async {
@@ -1112,3 +1225,4 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
     );
   }
 }
+

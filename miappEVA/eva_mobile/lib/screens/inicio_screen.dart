@@ -14,6 +14,8 @@ import 'package:image_picker/image_picker.dart';
 import '../services/medicamento_service.dart';
 import '../services/alarmas_local_service.dart';
 import '../services/adulto_location_service.dart';
+import '../services/chat_service.dart';
+import '../services/notificacion_service.dart';
 import '../services/tts_service.dart';
 import 'adulto_chat_page.dart';
 import 'crear_alarma_manual_page.dart';
@@ -37,6 +39,9 @@ class _InicioScreenState extends State<InicioScreen> with WidgetsBindingObserver
   bool _cargandoUbicacion = false;
   bool _enviandoEmergencia = false;
   StreamSubscription<Position>? _locationSubscription;
+  Timer? _chatTimer;
+  bool _chatAbierto = false;
+  int _ultimoChatIdNotificado = 0;
 
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _speechDisponible = false;
@@ -69,6 +74,10 @@ class _InicioScreenState extends State<InicioScreen> with WidgetsBindingObserver
 
     if (_inicio?.estaVinculado == true) {
       await _cargarEstadoUbicacion();
+      await _refreshChatOnly(notify: false);
+      _chatTimer ??= Timer.periodic(const Duration(seconds: 8), (_) {
+        _refreshChatOnly();
+      });
 
       if (!_ubicacionActiva) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -77,6 +86,8 @@ class _InicioScreenState extends State<InicioScreen> with WidgetsBindingObserver
       }
     } else {
       _detenerStreamUbicacion();
+      _chatTimer?.cancel();
+      _chatTimer = null;
       if (mounted) {
         setState(() {
           _ubicacionActiva = false;
@@ -255,6 +266,12 @@ class _InicioScreenState extends State<InicioScreen> with WidgetsBindingObserver
       setState(() {
         _inicio = data;
       });
+
+      if (_inicio?.estaVinculado != true) {
+        _chatTimer?.cancel();
+        _chatTimer = null;
+        _ultimoChatIdNotificado = 0;
+      }
     } catch (e) {
       if (!mounted) return;
 
@@ -662,6 +679,34 @@ class _InicioScreenState extends State<InicioScreen> with WidgetsBindingObserver
         _enviandoEmergencia = false;
       });
     }
+  }
+
+  Future<void> _refreshChatOnly({bool notify = true}) async {
+    if (!_mostrarFuncionesCuidador) {
+      _ultimoChatIdNotificado = 0;
+      return;
+    }
+
+    try {
+      final result = await ChatService.obtenerMensajes(limit: 20);
+      final entrantesNoVistos = result.mensajes.where((message) {
+        return message.emisorId != result.emisorId &&
+            message.escuchado == false &&
+            message.id > _ultimoChatIdNotificado;
+      }).toList();
+
+      if (notify && !_chatAbierto && entrantesNoVistos.isNotEmpty) {
+        final ultimo = entrantesNoVistos.last;
+        await NotificacionService.mostrarNotificacionMensajeParaAdulto(
+          id: 400000 + ultimo.id,
+          cuerpo: ultimo.mensaje,
+        );
+      }
+
+      if (result.lastId > _ultimoChatIdNotificado) {
+        _ultimoChatIdNotificado = result.lastId;
+      }
+    } catch (_) {}
   }
 
   int? _mapearDiaTextoANumero(String dia) {
@@ -1344,12 +1389,15 @@ class _InicioScreenState extends State<InicioScreen> with WidgetsBindingObserver
                           'Aqui puedes comunicarte con tu cuidador usando tu voz.',
                         );
                         if (!mounted) return;
+                        _chatAbierto = true;
                         await Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) => const AdultoChatPage(),
                           ),
                         );
+                        _chatAbierto = false;
+                        await _refreshChatOnly(notify: false);
                       },
                       size: 190,
                     ),
@@ -1479,7 +1527,9 @@ class _InicioScreenState extends State<InicioScreen> with WidgetsBindingObserver
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _detenerStreamUbicacion();
+    _chatTimer?.cancel();
     unawaited(TtsService.detener());
     super.dispose();
   }
 }
+

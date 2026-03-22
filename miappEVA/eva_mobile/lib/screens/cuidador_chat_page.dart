@@ -5,6 +5,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../models/chat_message_model.dart';
 import '../services/chat_service.dart';
+import '../services/notificacion_service.dart';
 import '../services/tts_service.dart';
 
 class CuidadorChatPage extends StatefulWidget {
@@ -90,7 +91,22 @@ class _CuidadorChatPageState extends State<CuidadorChatPage> {
 
       final nextMessages = result.mensajes;
       final nextLastId = result.lastId;
+      final prevLastId = _lastId;
       final shouldScroll = _messages.isEmpty || nextMessages.length > _messages.length;
+
+      if (!initial && nextLastId > prevLastId) {
+        final incoming = nextMessages.where((message) {
+          return message.id > prevLastId && message.emisorId != result.emisorId;
+        }).toList();
+
+        if (incoming.isNotEmpty) {
+          final latest = incoming.last;
+          await NotificacionService.mostrarNotificacionMensajeParaCuidador(
+            id: 510000 + latest.id,
+            cuerpo: latest.mensaje,
+          );
+        }
+      }
 
       setState(() {
         _messages = nextMessages;
@@ -267,31 +283,6 @@ class _CuidadorChatPageState extends State<CuidadorChatPage> {
       ),
       body: Column(
         children: [
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: const [
-                BoxShadow(
-                  blurRadius: 12,
-                  color: Colors.black12,
-                  offset: Offset(0, 4),
-                ),
-              ],
-            ),
-            child: const Text(
-              'Escribe o dicta un mensaje para comunicarte con el adulto mayor vinculado.',
-              style: TextStyle(
-                fontSize: 16,
-                height: 1.4,
-                color: Colors.black87,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())

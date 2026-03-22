@@ -4680,6 +4680,53 @@ def api_v1_cuidador_alarmas_eliminar(request):
 
 
 @csrf_exempt
+def api_v1_cuidador_alertas_medicamentos(request):
+    try:
+        username = (request.GET.get("username") or "").strip()
+        if not username:
+            return JsonResponse({"ok": False, "error": "Username requerido."}, status=400)
+
+        adulto_django, err = _cuidador_get_adulto_django_from_username(username)
+        if err:
+            return JsonResponse({"ok": False, "error": err}, status=403)
+
+        ahora = timezone.localtime()
+        espera_min = ahora - timedelta(minutes=10)
+        recientes_min = ahora - timedelta(hours=12)
+
+        alertas = (
+            Alarma.objects
+            .filter(
+                usuario=adulto_django,
+                activa=True,
+                entregada=False,
+                disparada_at__isnull=False,
+                disparada_at__lte=espera_min,
+                disparada_at__gte=recientes_min,
+            )
+            .order_by("-disparada_at")
+        )
+
+        data = []
+        for alarma in alertas:
+            mensaje = (alarma.mensaje or "").strip()
+            if mensaje.lower().startswith("cita:"):
+                continue
+
+            data.append({
+                "id": alarma.id,
+                "mensaje": mensaje,
+                "hora": alarma.hora.strftime("%H:%M"),
+                "fecha": alarma.fecha.isoformat() if alarma.fecha else None,
+                "disparada_at": alarma.disparada_at.isoformat() if alarma.disparada_at else None,
+            })
+
+        return JsonResponse({"ok": True, "alertas": data})
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+
+@csrf_exempt
 @require_POST
 def api_v1_cuidador_crear_alarmas_receta(request):
     try:

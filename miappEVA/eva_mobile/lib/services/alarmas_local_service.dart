@@ -215,14 +215,14 @@ class AlarmasLocalService {
 
     await NotificacionService.cancelarAlarmaLocal(actual);
 
+    if (actual.source == 'remote' && actual.remoteAlarmId != null) {
+      try {
+        await AlarmasService.marcarEntregada(actual.remoteAlarmId!);
+      } catch (_) {}
+    }
+
     final esUnaSolaVez = actual.diasSemana.isEmpty;
     if (esUnaSolaVez) {
-      if (actual.source == 'remote' && actual.remoteAlarmId != null) {
-        try {
-          await AlarmasService.eliminarRemota(actual.remoteAlarmId!);
-        } catch (_) {}
-      }
-
       alarmas.removeAt(index);
       await _guardarLista(alarmas);
       return;

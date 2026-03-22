@@ -5,6 +5,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../models/chat_message_model.dart';
 import '../services/chat_service.dart';
+import '../services/notificacion_service.dart';
 import '../services/tts_service.dart';
 
 class AdultoChatPage extends StatefulWidget {
@@ -89,7 +90,22 @@ class _AdultoChatPageState extends State<AdultoChatPage> {
 
       final nextMessages = result.mensajes;
       final nextLastId = result.lastId;
+      final prevLastId = _lastId;
       final shouldScroll = _messages.isEmpty || nextMessages.length > _messages.length;
+
+      if (!initial && nextLastId > prevLastId) {
+        final incoming = nextMessages.where((message) {
+          return message.id > prevLastId && message.emisorId != result.emisorId;
+        }).toList();
+
+        if (incoming.isNotEmpty) {
+          final latest = incoming.last;
+          await NotificacionService.mostrarNotificacionMensajeParaAdulto(
+            id: 410000 + latest.id,
+            cuerpo: latest.mensaje,
+          );
+        }
+      }
 
       setState(() {
         _messages = nextMessages;

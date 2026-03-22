@@ -38,7 +38,7 @@ class _CuidadorMapaPageState extends State<CuidadorMapaPage> {
     if (_locationState == null) return 'Cargando ubicacion';
     if (_locationState!.adult == null) return 'Sin adulto vinculado';
     if (!_locationState!.compartirUbicacion) return 'Ubicacion desactivada';
-    if (_locationState!.sinSenal || _locationState!.latest == null) return 'Sin senal';
+    if (_locationState!.sinSenal || _locationState!.latest == null) return 'Sin señal';
     return 'Ubicacion activa';
   }
 
@@ -72,7 +72,7 @@ class _CuidadorMapaPageState extends State<CuidadorMapaPage> {
       return 'El adulto desactivo la opcion de compartir ubicacion.';
     }
     if (_locationState!.sinSenal || _locationState!.latest == null) {
-      return 'La app no recibe una posicion valida porque el dispositivo esta sin senal.';
+      return 'La app no recibe una posicion valida porque el dispositivo esta sin señal.';
     }
     return 'La ubicacion del adulto se esta recibiendo correctamente.';
   }

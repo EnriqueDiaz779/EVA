@@ -20,7 +20,7 @@ class AdultoLocationState {
 }
 
 class AdultoLocationService {
-  static const String baseUrl = 'http://10.0.2.2:8000';
+  static const String baseUrl = 'http://192.168.1.3:8000';
 
   static Future<String> _getUsername() async {
     final prefs = await SharedPreferences.getInstance();

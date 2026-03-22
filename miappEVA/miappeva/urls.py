@@ -64,6 +64,7 @@ urlpatterns = [
     path("api/v1/cuidador/alarmas/crear/", views.api_v1_cuidador_alarmas_crear, name="api_v1_cuidador_alarmas_crear"),
     path("api/v1/cuidador/alarmas/editar/", views.api_v1_cuidador_alarmas_editar, name="api_v1_cuidador_alarmas_editar"),
     path("api/v1/cuidador/alarmas/eliminar/", views.api_v1_cuidador_alarmas_eliminar, name="api_v1_cuidador_alarmas_eliminar"),
+    path("api/v1/cuidador/alertas/medicamentos/", views.api_v1_cuidador_alertas_medicamentos, name="api_v1_cuidador_alertas_medicamentos"),
     path("api/v1/cuidador/receta/crear-alarmas/", views.api_v1_cuidador_crear_alarmas_receta, name="api_v1_cuidador_crear_alarmas_receta"),
     path("api/v1/cuidador/ubicacion/ultima/", views.api_v1_cuidador_ubicacion_ultima, name="api_v1_cuidador_ubicacion_ultima"),
     path("api/v1/cuidador/ubicacion/historial/", views.api_v1_cuidador_ubicacion_historial, name="api_v1_cuidador_ubicacion_historial"),
