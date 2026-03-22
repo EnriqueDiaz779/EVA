@@ -107,8 +107,8 @@ class _InicioScreenState extends State<InicioScreen> with WidgetsBindingObserver
     final estaVinculado = _inicio?.estaVinculado == true;
 
     final mensaje = estaVinculado
-        ? 'Bienvenido a EVA. Presiona hablar para decirme lo que necesitas, lector de medicamentos para escanear un medicamento, chat para comunicarte con tu cuidador, botón de emergencia para pedir ayuda, o ubicación compartida para que tu cuidador pueda verla.'
-        : 'Bienvenido a EVA. Presiona hablar para decirme lo que necesitas, lector de medicamentos para escanear un medicamento, o alarma para crear una alarma manual.';
+        ? 'Bienvenido a EVA. Presiona el botòn azul para decirme lo que necesitas, el amarillo para escanear un medicamento, el verde para comunicarte con tu cuidador o el rojo para pedir ayuda.'
+        : 'Bienvenido a EVA. Presiona el botòn azul para decirme lo que necesitas, el amarillo para escanear un medicamento, o el rojo para crear una alarma manual.';
 
     unawaited(TtsService.hablar(mensaje));
   }
@@ -304,7 +304,7 @@ class _InicioScreenState extends State<InicioScreen> with WidgetsBindingObserver
   Future<void> _accionLectorMedicamentos() async {
     try {
       await TtsService.hablar(
-        'Toma una foto de tu medicamento para que pueda ayudarte a identificarlo.',
+        'Toma una foto de tu medicamento para identificarlo.',
       );
 
       final picker = ImagePicker();
@@ -545,82 +545,115 @@ class _InicioScreenState extends State<InicioScreen> with WidgetsBindingObserver
     return username;
   }
 
+  Future<void> _accionBotonSOS() async {
+    if (_enviandoEmergencia) return;
+
+    await TtsService.detener();
+    await TtsService.hablar(
+      'Envìa una alerta SOS a tu cuidador en caso de emergencia.',
+    );
+
+    if (!mounted) return;
+
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    if (!mounted) return;
+
+    await _enviarEmergenciaSOS();
+  }
+
   Future<void> _enviarEmergenciaSOS() async {
     if (_enviandoEmergencia) return;
+
 
     final confirmar = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(28),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Se enviará una alerta SOS a tu cuidador.\n\n¿Deseas continuar?',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 24,
-                  height: 1.45,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF374151),
-                ),
-              ),
-              const SizedBox(height: 28),
-              SizedBox(
-                width: double.infinity,
-                height: 58,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE53935),
-                    foregroundColor: Colors.white,
-                    elevation: 4,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                  child: const Text(
-                    'Enviar SOS',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                height: 58,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE5E7EB),
-                    foregroundColor: Colors.black,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                  child: const Text(
-                    'Cancelar',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+      builder: (_) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          TtsService.detener();
+          TtsService.hablar(
+            'Se enviará una alerta SOS a tu cuidador. ¿Deseas continuar?',
+          );
+        });
+
+        return Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(28),
           ),
-        ),
-      ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Se enviará una alerta SOS a tu cuidador.\n\n¿Deseas continuar?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 24,
+                    height: 1.45,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF374151),
+                  ),
+                ),
+                const SizedBox(height: 28),
+                SizedBox(
+                  width: double.infinity,
+                  height: 58,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      TtsService.detener();
+                      Navigator.pop(context, true);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE53935),
+                      foregroundColor: Colors.white,
+                      elevation: 4,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    child: const Text(
+                      'Enviar SOS',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  height: 58,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      TtsService.detener();
+                      Navigator.pop(context, false);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE5E7EB),
+                      foregroundColor: Colors.black,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    child: const Text(
+                      'Cancelar',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
 
     if (confirmar != true) return;
@@ -709,86 +742,6 @@ class _InicioScreenState extends State<InicioScreen> with WidgetsBindingObserver
     } catch (_) {}
   }
 
-  int? _mapearDiaTextoANumero(String dia) {
-    final d = dia.toLowerCase().trim();
-
-    const mapa = {
-      'lun': 1,
-      'lunes': 1,
-      'mar': 2,
-      'martes': 2,
-      'mie': 3,
-      'mié': 3,
-      'miercoles': 3,
-      'miércoles': 3,
-      'jue': 4,
-      'jueves': 4,
-      'vie': 5,
-      'viernes': 5,
-      'sab': 6,
-      'sáb': 6,
-      'sabado': 6,
-      'sábado': 6,
-      'dom': 7,
-      'domingo': 7,
-    };
-
-    return mapa[d];
-  }
-
-  List<int> _obtenerDiasDesdeMeta(Map meta) {
-    final raw = meta['dias_semana'] ?? meta['dias'] ?? meta['dia'];
-
-    if (raw is List) {
-      return raw.map((e) {
-        if (e is int) return e;
-        return _mapearDiaTextoANumero(e.toString());
-      }).whereType<int>().toSet().toList()..sort();
-    }
-
-    if (raw is String && raw.trim().isNotEmpty) {
-      return raw
-          .split(RegExp(r'[,;/]'))
-          .map((e) => _mapearDiaTextoANumero(e.trim()))
-          .whereType<int>()
-          .toSet()
-          .toList()
-        ..sort();
-    }
-
-    return <int>[];
-  }
-
-  String? _obtenerFechaIsoDesdeMeta(Map meta) {
-    String? fechaIso = meta['fecha']?.toString();
-
-    if (fechaIso != null && fechaIso.trim().isNotEmpty && fechaIso != 'null') {
-      return fechaIso.trim();
-    }
-
-    final fechaRelativa = (meta['fecha_relativa'] ?? '')
-        .toString()
-        .toLowerCase()
-        .trim();
-
-    if (fechaRelativa.isEmpty) return null;
-
-    final ahora = DateTime.now();
-    DateTime base = ahora;
-
-    if (fechaRelativa == 'mañana' || fechaRelativa == 'manana') {
-      base = ahora.add(const Duration(days: 1));
-    } else if (fechaRelativa == 'hoy') {
-      base = ahora;
-    } else {
-      return null;
-    }
-
-    return '${base.year.toString().padLeft(4, '0')}-'
-        '${base.month.toString().padLeft(2, '0')}-'
-        '${base.day.toString().padLeft(2, '0')}';
-  }
-
   Future<void> _accionHablar() async {
     if (_procesandoVoz) return;
 
@@ -862,7 +815,6 @@ class _InicioScreenState extends State<InicioScreen> with WidgetsBindingObserver
 
       final respuesta = (data['respuesta'] ?? '').toString().trim();
       final alarmCreated = data['alarm_created'] == true;
-      final meta = data['meta'];
 
       if (!mounted) return;
 
@@ -873,37 +825,7 @@ class _InicioScreenState extends State<InicioScreen> with WidgetsBindingObserver
       });
 
       if (alarmCreated) {
-        String hora = '';
-        String mensajeAlarma = 'Es hora de tu alarma';
-
-        if (meta is Map) {
-          final mensaje = (meta['mensaje'] ?? '').toString().trim();
-          hora = (meta['hora'] ?? '').toString().trim();
-
-          if (mensaje.isNotEmpty) {
-            mensajeAlarma = mensaje;
-          }
-
-          if (hora.isNotEmpty) {
-            final partes = hora.split(':');
-
-            if (partes.length >= 2) {
-              final h = int.tryParse(partes[0]) ?? 0;
-              final m = int.tryParse(partes[1]) ?? 0;
-
-              final fechaIso = _obtenerFechaIsoDesdeMeta(meta);
-              final diasSemana = _obtenerDiasDesdeMeta(meta);
-
-              await AlarmasLocalService.crearAlarma(
-                hour: h,
-                minute: m,
-                mensaje: mensajeAlarma,
-                fechaIso: fechaIso,
-                diasSemana: diasSemana,
-              );
-            }
-          }
-        }
+        await AlarmasLocalService.sincronizarDesdeBackend();
       }
 
       _mostrarDialogoRespuesta(
@@ -1348,7 +1270,7 @@ class _InicioScreenState extends State<InicioScreen> with WidgetsBindingObserver
                   const SizedBox(height: 28),
                   _buildBotonPrincipal(
                     imagen: 'assets/images/medicamento.png',
-                    texto: _procesandoLector ? 'Procesando...' : 'Lector Medicamentos',
+                    texto: _procesandoLector ? 'Procesando...' : 'Tomar foto del medicamento',
                     onTap: _procesandoLector ? () {} : _accionLectorMedicamentos,
                     size: 190,
                   ),
@@ -1356,10 +1278,10 @@ class _InicioScreenState extends State<InicioScreen> with WidgetsBindingObserver
                     const SizedBox(height: 28),
                     _buildBotonPrincipal(
                       imagen: 'assets/images/alarmaBoton.png',
-                      texto: 'Alarma',
+                      texto: 'Crear alarma',
                       onTap: () async {
                         await TtsService.hablar(
-                          'Aqui puedes crear una alarma manual. Primero selecciona la hora, luego los dias si quieres repetirla, y por ultimo escribe el mensaje.',
+                          'Aqui puedes crear una alarma manual.',
                         );
                         final creada = await Navigator.push(
                           context,
@@ -1383,7 +1305,7 @@ class _InicioScreenState extends State<InicioScreen> with WidgetsBindingObserver
                     const SizedBox(height: 28),
                     _buildBotonPrincipal(
                       imagen: 'assets/images/chat_boton.png',
-                      texto: 'Chat con cuidador',
+                      texto: 'Mandar mensaje',
                       onTap: () async {
                         await TtsService.hablar(
                           'Aqui puedes comunicarte con tu cuidador usando tu voz.',
@@ -1404,8 +1326,8 @@ class _InicioScreenState extends State<InicioScreen> with WidgetsBindingObserver
                     const SizedBox(height: 28),
                     _buildBotonPrincipal(
                       imagen: 'assets/images/sos_boton.png',
-                      texto: _enviandoEmergencia ? 'Enviando SOS...' : 'Emergencia SOS',
-                      onTap: _enviandoEmergencia ? () {} : _enviarEmergenciaSOS,
+                      texto: _enviandoEmergencia ? 'Enviando SOS...' : 'Pedir ayuda',
+                        onTap: _enviandoEmergencia ? () {} : _accionBotonSOS,
                       size: 190,
                     ),
                   ],

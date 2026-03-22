@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/cuidador_medicamento_alerta.dart';
 
 class CuidadorAlertasService {
-  static const String baseUrl = 'http://192.168.1.3:8000';
+  static const String baseUrl = 'http://192.168.1.13:8000';
 
   static Future<String> _getUsername() async {
     final prefs = await SharedPreferences.getInstance();

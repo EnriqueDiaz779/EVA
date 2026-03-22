@@ -109,11 +109,21 @@ class _CuidadorAgendaCardState extends State<CuidadorAgendaCard> {
       backgroundColor: Colors.transparent,
       isDismissible: true,
       enableDrag: true,
+      isScrollControlled: true,
       builder: (context) {
+        final media = MediaQuery.of(context);
+
         return SafeArea(
-          child: SizedBox(
-            height: double.infinity,
-            child: Center(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              0,
+              16,
+              media.padding.bottom + 42,
+            ),
+            child: Align(
+              alignment: Alignment.bottomCenter,
               child: Container(
                 width: 220,
                 decoration: BoxDecoration(

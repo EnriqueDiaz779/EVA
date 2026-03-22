@@ -1108,7 +1108,7 @@ class _CuidadorScreenState extends State<CuidadorScreen> {
             ),
             if (_mostrarPanelPerfil)
               Positioned(
-                top: 92,
+                top: 110,
                 right: 0,
                 child: GestureDetector(
                   onTap: () {},

@@ -6,9 +6,19 @@ import 'screens/inicio_screen.dart';
 import 'services/notificacion_service.dart';
 import 'services/alarmas_local_service.dart';
 import 'screens/cuidador_screen.dart';
+import 'package:flutter/services.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.white, // arriba blanco
+      statusBarIconBrightness: Brightness.dark, // iconos negros
+      statusBarBrightness: Brightness.light,
+    ),
+  );
+
   await NotificacionService.inicializar();
   runApp(const EvaApp());
 }

@@ -3514,6 +3514,7 @@ def api_v1_chat_marcar_visto(request):
         return JsonResponse({"ok": True, "updated": updated})
     except Exception as e:
         return JsonResponse({"ok": False, "error": str(e)}, status=500)
+        
 #-----Vinculacion 1 a 1 -----
 def _mysql_get_unico_vinculo_cuidador(cuidador_id: int):
     with connection.cursor() as cursor:

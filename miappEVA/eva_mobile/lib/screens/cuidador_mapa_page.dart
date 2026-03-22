@@ -132,23 +132,51 @@ class _CuidadorMapaPageState extends State<CuidadorMapaPage> {
     }
   }
 
+  PreferredSizeWidget _buildTopBar() {
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(58),
+      child: SafeArea(
+        bottom: false,
+        child: Container(
+          height: 58,
+          color: const Color(0xFF123C92),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Row(
+            children: [
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(
+                  Icons.arrow_back,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Expanded(
+                child: Text(
+                  'Mapa del cuidador',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final statusColor = _statusColor();
 
     return Scaffold(
       backgroundColor: const Color(0xFFDBDBDB),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF123C92),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          'Mapa del cuidador',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
+      appBar: _buildTopBar(),
       body: RefreshIndicator(
         onRefresh: _refreshLocation,
         child: ListView(
@@ -246,6 +274,13 @@ class _CuidadorMapaPageState extends State<CuidadorMapaPage> {
               ],
             ),
           ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          height: 30,
+          color: const Color(0xFF123C92),
         ),
       ),
     );

@@ -117,85 +117,97 @@ class _CuidadorCitaFormSheetState extends State<CuidadorCitaFormSheet> {
   @override
   Widget build(BuildContext context) {
     final editing = widget.initialItem != null;
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-      ),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
+    final media = MediaQuery.of(context);
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: media.viewInsets.bottom + media.padding.bottom + 1,
         ),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      editing ? 'Editar cita' : 'Genera una alarma para una cita',
-                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        editing ? 'Editar cita' : 'Genera una alarma para una cita',
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text('Selecciona la fecha de la cita.'),
+                const SizedBox(height: 18),
+                TextField(
+                  controller: _placeController,
+                  decoration: const InputDecoration(
+                    labelText: 'Lugar',
+                    hintText: 'Ej. IMSS / Hospital / Consultorio',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _dateController,
+                  readOnly: true,
+                  onTap: _pickDate,
+                  decoration: const InputDecoration(
+                    labelText: 'Fecha',
+                    border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.calendar_today_outlined),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: _pickTime,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      child: Text(
+                        _selectedTime == null
+                            ? 'Selecciona hora'
+                            : _formatTime(_selectedTime!),
+                      ),
                     ),
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Text('Selecciona la fecha de la cita.'),
-              const SizedBox(height: 18),
-              TextField(
-                controller: _placeController,
-                decoration: const InputDecoration(
-                  labelText: 'Lugar',
-                  hintText: 'Ej. IMSS / Hospital / Consultorio',
-                  border: OutlineInputBorder(),
                 ),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: _dateController,
-                readOnly: true,
-                onTap: _pickDate,
-                decoration: const InputDecoration(
-                  labelText: 'Fecha',
-                  border: OutlineInputBorder(),
-                  suffixIcon: Icon(Icons.calendar_today_outlined),
-                ),
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: _pickTime,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    child: Text(_selectedTime == null ? 'Selecciona hora' : _formatTime(_selectedTime!)),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _save,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF28469A),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: const Text('Crear alarma de cita'),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _save,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF28469A),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  child: const Text('Crear alarma de cita'),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

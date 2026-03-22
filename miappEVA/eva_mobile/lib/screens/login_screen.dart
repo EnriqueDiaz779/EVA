@@ -162,7 +162,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 24),
                         const Text(
-                          'Inicio de sesion',
+                          'Inicio de sesión',
                           style: TextStyle(
                             fontSize: 30,
                             fontWeight: FontWeight.w800,
@@ -171,7 +171,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 16),
                         const Text(
-                          'Bienvenido a EVA.',
+                          'Bienvenido a EVA',
                           style: TextStyle(
                             fontSize: 18,
                             color: Colors.black54,
@@ -266,7 +266,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         TextButton(
                           onPressed: _abrirRegistroCuidador,
                           child: const Text(
-                            'Eres cuidador? Registrate aqui',
+                            '¿Eres cuidador? Registrate aqui',
                             style: TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w600,

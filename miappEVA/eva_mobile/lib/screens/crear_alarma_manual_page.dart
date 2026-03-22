@@ -196,7 +196,7 @@ class _CrearAlarmaManualPageState extends State<CrearAlarmaManualPage> {
         child: Text(
           texto,
           style: const TextStyle(
-            fontSize: 24,
+            fontSize: 20,
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -420,7 +420,7 @@ class _CrearAlarmaManualPageState extends State<CrearAlarmaManualPage> {
           controller: _mensajeController,
           textAlign: TextAlign.center,
           style: const TextStyle(
-            fontSize: 24,
+            fontSize: 25,
             fontWeight: FontWeight.w700,
           ),
           decoration: InputDecoration(

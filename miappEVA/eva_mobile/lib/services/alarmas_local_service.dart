@@ -7,11 +7,34 @@ import 'alarmas_service.dart';
 import 'notificacion_service.dart';
 
 class AlarmasLocalService {
-  static const String _keyAlarmas = 'eva_alarmas_locales';
+  static const String _keyBaseAlarmas = 'eva_alarmas_locales';
+
+  static Future<String> _obtenerUsernameActual() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userData = prefs.getString('userData');
+
+    if (userData == null || userData.isEmpty) {
+      return 'anonimo';
+    }
+
+    try {
+      final decoded = jsonDecode(userData);
+      final username = (decoded['username'] ?? '').toString().trim();
+      return username.isEmpty ? 'anonimo' : username;
+    } catch (_) {
+      return 'anonimo';
+    }
+  }
+
+  static Future<String> _keyAlarmas() async {
+    final username = await _obtenerUsernameActual();
+    return '$_keyBaseAlarmas:$username';
+  }
 
   static Future<List<AlarmaLocal>> obtenerAlarmas() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_keyAlarmas);
+    final key = await _keyAlarmas();
+    final raw = prefs.getString(key);
 
     if (raw == null || raw.isEmpty) return [];
 
@@ -28,8 +51,9 @@ class AlarmasLocalService {
 
   static Future<void> _guardarLista(List<AlarmaLocal> alarmas) async {
     final prefs = await SharedPreferences.getInstance();
+    final key = await _keyAlarmas();
     final raw = jsonEncode(alarmas.map((e) => e.toJson()).toList());
-    await prefs.setString(_keyAlarmas, raw);
+    await prefs.setString(key, raw);
   }
 
   static Future<AlarmaLocal> crearAlarma({
@@ -153,7 +177,16 @@ class AlarmasLocalService {
       final minute = int.tryParse(partes[1]) ?? 0;
       final fechaIso = (raw['fecha'] ?? '').toString().trim();
       final dias = _parseDiasSemana((raw['dias'] ?? '').toString());
-      final activa = raw['activa'] != false;
+      final activa = raw['activa'] == true;
+      final estadoBackend = (raw['estado'] ?? '').toString().toLowerCase().trim();
+      final esUnaSolaVez = dias.isEmpty;
+      if (esUnaSolaVez &&
+          (!activa ||
+          estadoBackend == 'tomada' ||
+          estadoBackend == 'entregada' ||
+          estadoBackend == 'completada')) {
+        continue;
+      }
 
       AlarmaLocal? previa;
       for (final alarma in remotasActuales) {

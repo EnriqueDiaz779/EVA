@@ -189,164 +189,178 @@ class _CuidadorAlarmFormSheetState extends State<CuidadorAlarmFormSheet> {
   @override
   Widget build(BuildContext context) {
     final editing = widget.initialItem != null;
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-      ),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
+    final media = MediaQuery.of(context);
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: media.viewInsets.bottom + media.padding.bottom + 1,
         ),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      editing ? 'Editar alarma' : 'Nueva alarma',
-                      style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Text('Se creara para el adulto vinculado.'),
-              const SizedBox(height: 18),
-              TextField(
-                controller: _messageController,
-                decoration: const InputDecoration(
-                  labelText: 'Mensaje / Nombre',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _pickTime,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        child: Text(_selectedTime == null ? 'Selecciona hora' : _formatTime(_selectedTime!)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _dateController,
-                      readOnly: true,
-                      onTap: _pickDate,
-                      decoration: const InputDecoration(
-                        labelText: 'Fecha',
-                        border: OutlineInputBorder(),
-                        suffixIcon: Icon(Icons.calendar_today_outlined),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              const Text(
-                'Dias (opcional)',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF344054),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: _weekdayOptions.map((day) {
-                  final selected = _selectedWeekdays.contains(day.value);
-                  return GestureDetector(
-                    onTap: () => _toggleWeekday(day.value),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 160),
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? const Color(0xFF28469A)
-                            : const Color(0xFFF4F6FB),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: selected
-                              ? const Color(0xFF28469A)
-                              : const Color(0xFFD0D5DD),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        editing ? 'Editar alarma' : 'Nueva alarma',
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
-                      child: Center(
-                        child: Text(
-                          day.label,
-                          style: TextStyle(
-                            color: selected ? Colors.white : const Color(0xFF344054),
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text('Se creara para el adulto vinculado.'),
+                const SizedBox(height: 18),
+                TextField(
+                  controller: _messageController,
+                  decoration: const InputDecoration(
+                    labelText: 'Mensaje / Nombre',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _pickTime,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          child: Text(
+                            _selectedTime == null
+                                ? 'Selecciona hora'
+                                : _formatTime(_selectedTime!),
                           ),
                         ),
                       ),
                     ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 10),
-              if (_selectedWeekdays.isEmpty)
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: _dateController,
+                        readOnly: true,
+                        onTap: _pickDate,
+                        decoration: const InputDecoration(
+                          labelText: 'Fecha',
+                          border: OutlineInputBorder(),
+                          suffixIcon: Icon(Icons.calendar_today_outlined),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
                 const Text(
-                  'Si no eliges dias, la alarma sera de una sola vez.',
+                  'Dias (opcional)',
                   style: TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF667085),
-                  ),
-                )
-              else
-                Text(
-                  'Repetir: ${_daysTextValue()}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF667085),
-                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF344054),
                   ),
                 ),
-              const SizedBox(height: 6),
-              CheckboxListTile(
-                value: _active,
-                contentPadding: EdgeInsets.zero,
-                onChanged: (value) {
-                  setState(() {
-                    _active = value ?? true;
-                  });
-                },
-                title: const Text('Activa'),
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _save,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF28469A),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  child: const Text('Guardar'),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: _weekdayOptions.map((day) {
+                    final selected = _selectedWeekdays.contains(day.value);
+                    return GestureDetector(
+                      onTap: () => _toggleWeekday(day.value),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? const Color(0xFF28469A)
+                              : const Color(0xFFF4F6FB),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: selected
+                                ? const Color(0xFF28469A)
+                                : const Color(0xFFD0D5DD),
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            day.label,
+                            style: TextStyle(
+                              color: selected
+                                  ? Colors.white
+                                  : const Color(0xFF344054),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
-              ),
-            ],
+                const SizedBox(height: 10),
+                if (_selectedWeekdays.isEmpty)
+                  const Text(
+                    'Si no eliges dias, la alarma sera de una sola vez.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF667085),
+                    ),
+                  )
+                else
+                  Text(
+                    'Repetir: ${_daysTextValue()}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF667085),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                const SizedBox(height: 6),
+                CheckboxListTile(
+                  value: _active,
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (value) {
+                    setState(() {
+                      _active = value ?? true;
+                    });
+                  },
+                  title: const Text('Activa'),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _save,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF28469A),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: const Text('Guardar'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import '../models/cuidador_inicio_model.dart';
 
 class CuidadorService {
-  static const String baseUrl = 'http://192.168.1.3:8000';
+  static const String baseUrl = 'http://192.168.1.13:8000';
 
   static Future<CuidadorInicioModel> obtenerInicioCuidador({
     required String username,

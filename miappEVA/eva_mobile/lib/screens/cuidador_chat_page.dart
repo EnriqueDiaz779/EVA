@@ -5,7 +5,6 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../models/chat_message_model.dart';
 import '../services/chat_service.dart';
-import '../services/notificacion_service.dart';
 import '../services/tts_service.dart';
 
 class CuidadorChatPage extends StatefulWidget {
@@ -42,6 +41,7 @@ class _CuidadorChatPageState extends State<CuidadorChatPage> {
     await TtsService.inicializar();
     await _initSpeech();
     await _loadMessages(initial: true);
+
     _pollTimer = Timer.periodic(_pollInterval, (_) {
       _loadMessages();
     });
@@ -65,6 +65,7 @@ class _CuidadorChatPageState extends State<CuidadorChatPage> {
           });
         },
       );
+
       if (!mounted) return;
       setState(() {
         _speechAvailable = available;
@@ -86,42 +87,32 @@ class _CuidadorChatPageState extends State<CuidadorChatPage> {
     }
 
     try {
-      final result = await ChatService.obtenerMensajes();
+      final oldLastId = _lastId;
+
+      final result = await ChatService.obtenerMensajes(
+        afterId: initial ? 0 : _lastId,
+        limit: 50,
+      );
+
       if (!mounted) return;
 
-      final nextMessages = result.mensajes;
-      final nextLastId = result.lastId;
-      final prevLastId = _lastId;
-      final shouldScroll = _messages.isEmpty || nextMessages.length > _messages.length;
-
-      if (!initial && nextLastId > prevLastId) {
-        final incoming = nextMessages.where((message) {
-          return message.id > prevLastId && message.emisorId != result.emisorId;
-        }).toList();
-
-        if (incoming.isNotEmpty) {
-          final latest = incoming.last;
-          await NotificacionService.mostrarNotificacionMensajeParaCuidador(
-            id: 510000 + latest.id,
-            cuerpo: latest.mensaje,
-          );
-        }
-      }
+      final nuevos = result.mensajes;
+      final hasNewMessages = initial || nuevos.isNotEmpty;
 
       setState(() {
-        _messages = nextMessages;
+        _messages = initial ? nuevos : [..._messages, ...nuevos];
         _currentUserId = result.emisorId;
-        _lastId = nextLastId;
+        _lastId = result.lastId;
         _error = null;
       });
 
-      if (_lastId > 0) {
+      if (_lastId > 0 && _lastId != oldLastId) {
         await ChatService.marcarVistos(upToId: _lastId);
       }
 
-      if (shouldScroll) {
+      if (hasNewMessages) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scrollToBottom();
+          _scrollToBottom(force: initial);
         });
       }
     } catch (e) {
@@ -191,13 +182,18 @@ class _CuidadorChatPageState extends State<CuidadorChatPage> {
       partialResults: false,
       onResult: (result) async {
         if (!result.finalResult) return;
+
         final recognized = result.recognizedWords.trim();
+
         await _speech.stop();
         if (!mounted) return;
+
         setState(() {
           _listening = false;
         });
+
         if (recognized.isEmpty) return;
+
         await _confirmAndSendVoice(recognized);
       },
     );
@@ -244,13 +240,19 @@ class _CuidadorChatPageState extends State<CuidadorChatPage> {
     }
   }
 
-  void _scrollToBottom() {
+  void _scrollToBottom({bool force = false}) {
     if (!_scrollController.hasClients) return;
-    _scrollController.animateTo(
-      _scrollController.position.maxScrollExtent,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOut,
-    );
+
+    final position = _scrollController.position;
+    final isNearBottom = (position.maxScrollExtent - position.pixels) <= 120;
+
+    if (force || isNearBottom) {
+      _scrollController.animateTo(
+        position.maxScrollExtent,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   String _formatTime(DateTime? date) {
@@ -258,6 +260,127 @@ class _CuidadorChatPageState extends State<CuidadorChatPage> {
     final hour = date.hour.toString().padLeft(2, '0');
     final minute = date.minute.toString().padLeft(2, '0');
     return '$hour:$minute';
+  }
+
+  PreferredSizeWidget _buildTopBar() {
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(58),
+      child: SafeArea(
+        bottom: false,
+        child: Container(
+          height: 58,
+          color: const Color(0xFF123C92),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Row(
+            children: [
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(
+                  Icons.arrow_back,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Expanded(
+                child: Text(
+                  'Chat con adulto mayor',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessagesList() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            _error!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 16),
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      controller: _scrollController,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      itemCount: _messages.length,
+      itemBuilder: (context, index) {
+        final message = _messages[index];
+        final mine = message.emisorId == _currentUserId;
+
+        return Align(
+          alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            constraints: const BoxConstraints(maxWidth: 280),
+            decoration: BoxDecoration(
+              color: mine ? const Color(0xFF123C92) : Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: const [
+                BoxShadow(
+                  blurRadius: 8,
+                  color: Colors.black12,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (message.tipo == 'audio')
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      'Mensaje por voz',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: mine ? Colors.white70 : const Color(0xFF123C92),
+                      ),
+                    ),
+                  ),
+                Text(
+                  message.mensaje,
+                  style: TextStyle(
+                    fontSize: 15,
+                    height: 1.35,
+                    color: mine ? Colors.white : Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _formatTime(message.creadoEn),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: mine ? Colors.white70 : Colors.black45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -273,91 +396,11 @@ class _CuidadorChatPageState extends State<CuidadorChatPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFE4E4E4),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF123C92),
-        foregroundColor: Colors.white,
-        title: const Text(
-          'Chat con adulto mayor',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-      ),
+      appBar: _buildTopBar(),
       body: Column(
         children: [
           Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Text(
-                            _error!,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontSize: 16),
-                          ),
-                        ),
-                      )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, index) {
-                          final message = _messages[index];
-                          final mine = message.emisorId == _currentUserId;
-                          return Align(
-                            alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 10),
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                              constraints: const BoxConstraints(maxWidth: 280),
-                              decoration: BoxDecoration(
-                                color: mine ? const Color(0xFF123C92) : Colors.white,
-                                borderRadius: BorderRadius.circular(18),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    blurRadius: 8,
-                                    color: Colors.black12,
-                                    offset: Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  if (message.tipo == 'audio')
-                                    Padding(
-                                      padding: const EdgeInsets.only(bottom: 6),
-                                      child: Text(
-                                        'Mensaje por voz',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700,
-                                          color: mine ? Colors.white70 : const Color(0xFF123C92),
-                                        ),
-                                      ),
-                                    ),
-                                  Text(
-                                    message.mensaje,
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      height: 1.35,
-                                      color: mine ? Colors.white : Colors.black87,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    _formatTime(message.creadoEn),
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: mine ? Colors.white70 : Colors.black45,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
+            child: _buildMessagesList(),
           ),
           SafeArea(
             top: false,
@@ -381,7 +424,10 @@ class _CuidadorChatPageState extends State<CuidadorChatPage> {
                           borderRadius: BorderRadius.circular(18),
                           borderSide: BorderSide.none,
                         ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
                       ),
                     ),
                   ),
@@ -389,7 +435,8 @@ class _CuidadorChatPageState extends State<CuidadorChatPage> {
                   IconButton.filled(
                     onPressed: _startVoiceInput,
                     style: IconButton.styleFrom(
-                      backgroundColor: _listening ? Colors.red : const Color(0xFF123C92),
+                      backgroundColor:
+                          _listening ? Colors.red : const Color(0xFF123C92),
                       minimumSize: const Size(48, 48),
                     ),
                     icon: Icon(_listening ? Icons.mic : Icons.mic_none),
@@ -417,6 +464,13 @@ class _CuidadorChatPageState extends State<CuidadorChatPage> {
             ),
           ),
         ],
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          height: 30,
+          color: const Color(0xFF123C92),
+        ),
       ),
     );
   }

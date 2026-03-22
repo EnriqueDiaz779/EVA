@@ -103,128 +103,55 @@ class _CuidadorRecetaPageState extends State<CuidadorRecetaPage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final meds = (_result?['medicamentos'] as List?) ?? const [];
-    final adulto = _result?['adulto'] as Map<String, dynamic>?;
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFDBDBDB),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF123C92),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          'Escanear receta',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x22000000),
-                  blurRadius: 18,
-                  offset: Offset(0, 8),
-                ),
-              ],
-            ),
-            child: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Crear alarmas desde receta',
-                  style: TextStyle(
-                    color: Color(0xFF20304D),
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'Toma una foto o elige una imagen de la galeria. La IA analizara la receta y generara las alarmas del adulto vinculado.',
-                  style: TextStyle(
-                    color: Color(0xFF667085),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
+  PreferredSizeWidget _buildTopBar() {
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(58),
+      child: SafeArea(
+        bottom: false,
+        child: Container(
+          height: 58,
+          color: const Color(0xFF123C92),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Row(
             children: [
-              _buildSourceButton(
-                label: 'Tomar foto',
-                icon: Icons.photo_camera_outlined,
-                onTap: () => _pickRecipe(ImageSource.camera),
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(
+                  Icons.arrow_back,
+                  color: Colors.white,
+                  size: 28,
+                ),
               ),
-              const SizedBox(width: 12),
-              _buildSourceButton(
-                label: 'Galeria',
-                icon: Icons.photo_library_outlined,
-                onTap: () => _pickRecipe(ImageSource.gallery),
+              const SizedBox(width: 4),
+              const Expanded(
+                child: Text(
+                  'Escanear receta',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),
-          if (_selectedImage != null) ...[
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x22000000),
-                    blurRadius: 18,
-                    offset: Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(18),
-                child: Image.file(
-                  _selectedImage!,
-                  height: 240,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                ),
-              ),
-            ),
-          ],
-          if (_processing) ...[
-            const SizedBox(height: 16),
-            const Center(child: CircularProgressIndicator()),
-          ],
-          if (_error != null) ...[
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFEE4E2),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFF97066)),
-              ),
-              child: Text(
-                _error!,
-                style: const TextStyle(
-                  color: Color(0xFFB42318),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
-          if (_result != null) ...[
-            const SizedBox(height: 16),
+        ),
+      ),
+    );
+  }
+
+  @override
+    Widget build(BuildContext context) {
+      final meds = (_result?['medicamentos'] as List?) ?? const [];
+      final adulto = _result?['adulto'] as Map<String, dynamic>?;
+
+      return Scaffold(
+        backgroundColor: const Color(0xFFDBDBDB),
+        appBar: _buildTopBar(),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
@@ -238,101 +165,211 @@ class _CuidadorRecetaPageState extends State<CuidadorRecetaPage> {
                   ),
                 ],
               ),
-              child: Column(
+              child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    (_result?['message'] ?? 'Resultado de la receta').toString(),
-                    style: const TextStyle(
+                    'Crear alarmas desde receta',
+                    style: TextStyle(
                       color: Color(0xFF20304D),
-                      fontSize: 20,
+                      fontSize: 22,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  if (adulto != null)
-                    Text(
-                      'Adulto: ${(adulto['nombre'] ?? 'Sin nombre').toString()}',
-                      style: const TextStyle(
-                        color: Color(0xFF475467),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 8),
                   Text(
-                    'Alarmas creadas: ${(_result?['alarmas_creadas'] ?? 0).toString()}',
-                    style: const TextStyle(
-                      color: Color(0xFF123C92),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
+                    'Toma una foto o elige una imagen de la galeria. La IA analizara la receta y generara las alarmas del adulto vinculado.',
+                    style: TextStyle(
+                      color: Color(0xFF667085),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      height: 1.35,
                     ),
                   ),
-                  const SizedBox(height: 14),
-                  if (meds.isEmpty)
-                    const Text(
-                      'No se detectaron medicamentos en la receta.',
-                      style: TextStyle(
-                        color: Color(0xFF667085),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    )
-                  else
-                    ...meds.map((item) {
-                      final med = Map<String, dynamic>.from(item as Map);
-                      return Container(
-                        width: double.infinity,
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: const Color(0xFFD0D5DD)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              (med['nombre'] ?? 'Medicamento').toString(),
-                              style: const TextStyle(
-                                color: Color(0xFF20304D),
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Dosis: ${(med['dosis'] ?? 'No especificada').toString()}',
-                              style: const TextStyle(
-                                color: Color(0xFF475467),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Frecuencia: ${(med['frecuencia'] ?? 'No especificada').toString()}',
-                              style: const TextStyle(
-                                color: Color(0xFF475467),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Alarmas creadas: ${(med['alarmas_creadas'] ?? 0).toString()}',
-                              style: const TextStyle(
-                                color: Color(0xFF123C92),
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                _buildSourceButton(
+                  label: 'Tomar foto',
+                  icon: Icons.photo_camera_outlined,
+                  onTap: () => _pickRecipe(ImageSource.camera),
+                ),
+                const SizedBox(width: 12),
+                _buildSourceButton(
+                  label: 'Galeria',
+                  icon: Icons.photo_library_outlined,
+                  onTap: () => _pickRecipe(ImageSource.gallery),
+                ),
+              ],
+            ),
+            if (_selectedImage != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x22000000),
+                      blurRadius: 18,
+                      offset: Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: Image.file(
+                    _selectedImage!,
+                    height: 240,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+            ],
+            if (_processing) ...[
+              const SizedBox(height: 16),
+              const Center(child: CircularProgressIndicator()),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEE4E2),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0xFFF97066)),
+                ),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(
+                    color: Color(0xFFB42318),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+            if (_result != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x22000000),
+                      blurRadius: 18,
+                      offset: Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      (_result?['message'] ?? 'Resultado de la receta').toString(),
+                      style: const TextStyle(
+                        color: Color(0xFF20304D),
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (adulto != null)
+                      Text(
+                        'Adulto: ${(adulto['nombre'] ?? 'Sin nombre').toString()}',
+                        style: const TextStyle(
+                          color: Color(0xFF475467),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Alarmas creadas: ${(_result?['alarmas_creadas'] ?? 0).toString()}',
+                      style: const TextStyle(
+                        color: Color(0xFF123C92),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    if (meds.isEmpty)
+                      const Text(
+                        'No se detectaron medicamentos en la receta.',
+                        style: TextStyle(
+                          color: Color(0xFF667085),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      )
+                    else
+                      ...meds.map((item) {
+                        final med = Map<String, dynamic>.from(item as Map);
+                        return Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: const Color(0xFFD0D5DD)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                (med['nombre'] ?? 'Medicamento').toString(),
+                                style: const TextStyle(
+                                  color: Color(0xFF20304D),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Dosis: ${(med['dosis'] ?? 'No especificada').toString()}',
+                                style: const TextStyle(
+                                  color: Color(0xFF475467),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Frecuencia: ${(med['frecuencia'] ?? 'No especificada').toString()}',
+                                style: const TextStyle(
+                                  color: Color(0xFF475467),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Alarmas creadas: ${(med['alarmas_creadas'] ?? 0).toString()}',
+                                style: const TextStyle(
+                                  color: Color(0xFF123C92),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                  ],
+                ),
+              ),
+            ],
           ],
-        ],
+       ), 
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          height: 30,
+          color: const Color(0xFF123C92),
+        ),
       ),
     );
   }
