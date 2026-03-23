@@ -1,10 +1,10 @@
-# Dependencias verificadas en el entorno virtual actual
-Django==6.0.3
-python-dotenv==1.2.2
-mysqlclient==2.2.8
-
-# Dependencias inferidas por imports del proyecto
+Django==5.2.7
+dj-database-url==2.3.0
+gunicorn==23.0.0
 openai>=1.0.0
-requests>=2.31.0
 Pillow>=10.0.0
+PyMySQL==1.1.1
 pywebpush>=2.0.0
+python-dotenv==1.2.2
+requests>=2.31.0
+whitenoise==6.9.0

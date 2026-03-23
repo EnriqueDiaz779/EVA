@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config/app_config.dart';
 
 class AlarmasService {
-  static const String baseUrl = 'http://192.168.1.13:8000';
+  static const String baseUrl = AppConfig.apiBaseUrl;
 
   static Future<String?> _getUsername() async {
     final prefs = await SharedPreferences.getInstance();

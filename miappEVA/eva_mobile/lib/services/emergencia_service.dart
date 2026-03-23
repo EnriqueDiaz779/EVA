@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../config/app_config.dart';
 import '../models/emergencia_model.dart';
 
 class EmergenciaService {
-  static const String _baseUrl = 'http://192.168.1.13:8000';
+  static const String _baseUrl = AppConfig.apiBaseUrl;
 
   static Future<Map<String, dynamic>> crearEmergencia({
     required String username,

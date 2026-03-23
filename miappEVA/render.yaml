@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: eva-web
+    env: python
+    rootDir: miappEVA
+    buildCommand: bash build.sh
+    startCommand: python manage.py migrate && gunicorn miproyectoeva.wsgi:application --bind 0.0.0.0:$PORT
+    envVars:
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DJANGO_ALLOWED_HOSTS
+        sync: false
+      - key: DJANGO_CSRF_TRUSTED_ORIGINS
+        sync: false
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: MAPBOX_TOKEN_PUBLIC
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: EVA_ENABLE_SCHEDULER
+        value: "false"
