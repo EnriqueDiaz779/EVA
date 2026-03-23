@@ -125,6 +125,7 @@ else:
 if DATABASES["default"]["ENGINE"] == "django.db.backends.mysql":
     options = DATABASES["default"].setdefault("OPTIONS", {})
     options.setdefault("init_command", "SET sql_mode='STRICT_TRANS_TABLES'")
+    options.pop("sslmode", None)
     if env_bool("DB_SSL_REQUIRED", default=not DEBUG):
         options.setdefault("ssl", {})
 
@@ -183,4 +184,3 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool(
 SECURE_HSTS_PRELOAD = env_bool("DJANGO_SECURE_HSTS_PRELOAD", default=False)
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
-
