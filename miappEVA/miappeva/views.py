@@ -1030,11 +1030,14 @@ def inicio(request):
     if mysql_user and mysql_user.get("tipo") == "adulto":
         usuario_id = int(mysql_user.get("id") or 0)
         if usuario_id:
-            codigo_unico = _mysql_get_or_create_codigo_unico(usuario_id)
-            es_premium = _mysql_adulto_premium_activo(usuario_id)
+            try:
+                codigo_unico = _mysql_get_or_create_codigo_unico(usuario_id)
+                es_premium = _mysql_adulto_premium_activo(usuario_id)
 
-            vinculo = _mysql_get_vinculo_por_adulto(usuario_id)
-            esta_vinculado = bool(vinculo and vinculo.get("activo"))
+                vinculo = _mysql_get_vinculo_por_adulto(usuario_id)
+                esta_vinculado = bool(vinculo and vinculo.get("activo"))
+            except Exception as e:
+                print(f"Error cargando datos complementarios de inicio para usuario {usuario_id}: {e}")
 
     return render(request, 'miapp/inicio.html', {
         "nombre": nombre,
