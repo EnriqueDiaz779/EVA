@@ -123,12 +123,20 @@ else:
     }
     
 
-if DATABASES["default"]["ENGINE"] == "django.db.backends.mysql":
+if database_url:
+    DATABASES = {
+        "default": dj_database_url.parse(
+            database_url,
+            conn_max_age=600,
+            # ssl_require=not DEBUG,  ← elimina esta línea
+        )
+    }
+    # Limpiar parámetros SSL incompatibles con PyMySQL
     options = DATABASES["default"].setdefault("OPTIONS", {})
-    options.setdefault("init_command", "SET sql_mode='STRICT_TRANS_TABLES'")
     options.pop("sslmode", None)
-    if env_bool("DB_SSL_REQUIRED", default=not DEBUG):
-        options.setdefault("ssl", {})
+    options.pop("ssl-mode", None)
+    options.pop("ssl_mode", None)
+    options["init_command"] = "SET sql_mode='STRICT_TRANS_TABLES'"
 
 
 AUTH_PASSWORD_VALIDATORS = [
