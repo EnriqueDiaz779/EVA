@@ -11,7 +11,7 @@ class EmergenciaService {
     double? lng,
   }) async {
     final response = await http.post(
-      Uri.parse('$_baseUrl/api/v1/emergencia/crear/'),
+      Uri.parse('${AppConfig.apiBaseUrl}/api/v1/emergencia/crear/'),
       headers: {
         'Content-Type': 'application/json',
       },
@@ -37,7 +37,7 @@ class EmergenciaService {
     required String username,
   }) async {
     final response = await http.get(
-      Uri.parse('$_baseUrl/api/v1/emergencia/pendientes/?username=$username'),
+      Uri.parse('${AppConfig.apiBaseUrl}/api/v1/emergencia/pendientes/?username=$username'),
     );
 
     final data = jsonDecode(utf8.decode(response.bodyBytes));
@@ -60,7 +60,7 @@ class EmergenciaService {
     required String estado,
   }) async {
     final response = await http.post(
-      Uri.parse('$_baseUrl/api/v1/emergencia/actualizar/'),
+      Uri.parse('${AppConfig.apiBaseUrl}/api/v1/emergencia/actualizar/'),
       headers: {
         'Content-Type': 'application/json',
       },
