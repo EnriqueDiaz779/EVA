@@ -21,7 +21,6 @@ class AdultoLocationState {
 }
 
 class AdultoLocationService {
-  static const String baseUrl = AppConfig.apiBaseUrl;
 
   static Future<String> _getUsername() async {
     final prefs = await SharedPreferences.getInstance();
@@ -40,7 +39,7 @@ class AdultoLocationService {
 
   static Future<AdultoLocationState> obtenerEstado() async {
     final username = await _getUsername();
-    final uri = Uri.parse('$baseUrl/api/v1/ubicacion/estado/?username=$username');
+    final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/ubicacion/estado/?username=$username');
     final response = await http.get(uri);
     final data = _decodeJsonResponse(
       response,
@@ -56,7 +55,7 @@ class AdultoLocationService {
 
   static Future<AdultoLocationState> cambiarEstado(bool activar) async {
     final username = await _getUsername();
-    final uri = Uri.parse('$baseUrl/api/v1/ubicacion/toggle/');
+    final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/ubicacion/toggle/');
     final response = await http.post(
       uri,
       headers: {'Content-Type': 'application/json'},
@@ -83,7 +82,7 @@ class AdultoLocationService {
     double? accuracy,
   }) async {
     final username = await _getUsername();
-    final uri = Uri.parse('$baseUrl/api/v1/ubicacion/ping/');
+    final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/ubicacion/ping/');
     final response = await http.post(
       uri,
       headers: {'Content-Type': 'application/json'},

@@ -5,7 +5,6 @@ import '../config/app_config.dart';
 import '../models/inicio_model.dart';
 
 class InicioService {
-  static const String baseUrl = AppConfig.apiBaseUrl;
 
   static Future<InicioModel> obtenerInicio() async {
     final prefs = await SharedPreferences.getInstance();
@@ -22,7 +21,7 @@ class InicioService {
       throw Exception('No se encontró el username guardado.');
     }
 
-    final url = Uri.parse('$baseUrl/api/v1/inicio/?username=$username');
+    final url = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/inicio/?username=$username');
 
     final response = await http.get(url, headers: {
       'Content-Type': 'application/json',

@@ -4,13 +4,12 @@ import '../config/app_config.dart';
 import '../models/cuidador_inicio_model.dart';
 
 class CuidadorService {
-  static const String baseUrl = AppConfig.apiBaseUrl;
 
   static Future<CuidadorInicioModel> obtenerInicioCuidador({
     required String username,
   }) async {
     final url = Uri.parse(
-      '$baseUrl/api/v1/interfaz-cuidador/?username=$username',
+      '${AppConfig.apiBaseUrl}/api/v1/interfaz-cuidador/?username=$username',
     );
 
     final response = await http.get(url);
@@ -29,7 +28,7 @@ class CuidadorService {
     required String username,
     required String codigo,
   }) async {
-    final url = Uri.parse('$baseUrl/vincular-adulto-por-codigo/');
+    final url = Uri.parse('${AppConfig.apiBaseUrl}/vincular-adulto-por-codigo/');
 
     final response = await http.post(
       url,

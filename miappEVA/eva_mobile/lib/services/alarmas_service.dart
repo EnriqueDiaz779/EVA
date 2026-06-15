@@ -4,7 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
 
 class AlarmasService {
-  static const String baseUrl = AppConfig.apiBaseUrl;
 
   static Future<String?> _getUsername() async {
     final prefs = await SharedPreferences.getInstance();
@@ -26,7 +25,7 @@ class AlarmasService {
     }
 
     final uri = Uri.parse(
-      '$baseUrl/api/v1/alarmas/pendientes/?username=$username',
+      '${AppConfig.apiBaseUrl}/api/v1/alarmas/pendientes/?username=$username',
     );
 
     final response = await http.get(uri);
@@ -46,7 +45,7 @@ class AlarmasService {
       throw Exception('No encontré el usuario logueado.');
     }
 
-    final uri = Uri.parse('$baseUrl/api/v1/alarmas/?username=$username');
+    final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/alarmas/?username=$username');
     final response = await http.get(uri);
     final data = jsonDecode(response.body);
 
@@ -64,7 +63,7 @@ class AlarmasService {
       throw Exception('No encontré el usuario logueado.');
     }
 
-    final uri = Uri.parse('$baseUrl/api/v1/alarmas/marcar-entregada/');
+    final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/alarmas/marcar-entregada/');
 
     final response = await http.post(
       uri,
@@ -90,7 +89,7 @@ class AlarmasService {
       throw Exception('No encontré el usuario logueado.');
     }
 
-    final uri = Uri.parse('$baseUrl/api/v1/alarmas/eliminar/');
+    final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/alarmas/eliminar/');
 
     final response = await http.post(
       uri,

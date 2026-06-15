@@ -25,7 +25,6 @@ class ChatFetchResult {
 }
 
 class ChatService {
-  static const String baseUrl = AppConfig.apiBaseUrl;
 
   static Future<String> _getUsername() async {
     final prefs = await SharedPreferences.getInstance();
@@ -48,7 +47,7 @@ class ChatService {
   }) async {
     final username = await _getUsername();
     final uri = Uri.parse(
-      '$baseUrl/api/v1/chat/mensajes/?username=$username&after_id=$afterId&limit=$limit',
+      '${AppConfig.apiBaseUrl}/api/v1/chat/mensajes/?username=$username&after_id=$afterId&limit=$limit',
     );
 
     final response = await http.get(uri);
@@ -80,7 +79,7 @@ class ChatService {
     String tipo = 'texto',
   }) async {
     final username = await _getUsername();
-    final uri = Uri.parse('$baseUrl/api/v1/chat/enviar/');
+    final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/chat/enviar/');
 
     final response = await http.post(
       uri,
@@ -104,7 +103,7 @@ class ChatService {
 
   static Future<void> marcarVistos({int? upToId}) async {
     final username = await _getUsername();
-    final uri = Uri.parse('$baseUrl/api/v1/chat/marcar-visto/');
+    final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/chat/marcar-visto/');
 
     final response = await http.post(
       uri,

@@ -7,7 +7,6 @@ import '../config/app_config.dart';
 import '../models/cuidador_medicamento_alerta.dart';
 
 class CuidadorAlertasService {
-  static const String baseUrl = AppConfig.apiBaseUrl;
 
   static Future<String> _getUsername() async {
     final prefs = await SharedPreferences.getInstance();
@@ -28,7 +27,7 @@ class CuidadorAlertasService {
       obtenerMedicamentosNoConfirmados() async {
     final username = await _getUsername();
     final uri = Uri.parse(
-      '$baseUrl/api/v1/cuidador/alertas/medicamentos/?username=$username',
+      '${AppConfig.apiBaseUrl}/api/v1/cuidador/alertas/medicamentos/?username=$username',
     );
 
     final response = await http.get(uri);

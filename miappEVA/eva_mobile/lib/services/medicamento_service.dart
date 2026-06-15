@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
 
 class MedicamentoService {
-  static const String baseUrl = AppConfig.apiBaseUrl;
 
   static Future<String> _getUsername() async {
     final prefs = await SharedPreferences.getInstance();
@@ -31,7 +30,7 @@ class MedicamentoService {
   }) async {
     final username = await _getUsername();
 
-    final uri = Uri.parse('$baseUrl/api/v1/medicamentos/analizar/');
+    final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/medicamentos/analizar/');
     final request = http.MultipartRequest('POST', uri);
 
     request.fields['username'] = username;
@@ -61,7 +60,7 @@ class MedicamentoService {
   }) async {
     final username = await _getUsername();
 
-    final uri = Uri.parse('$baseUrl/api/v1/cuidador/receta/crear-alarmas/');
+    final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/cuidador/receta/crear-alarmas/');
     final request = http.MultipartRequest('POST', uri);
 
     request.fields['username'] = username;

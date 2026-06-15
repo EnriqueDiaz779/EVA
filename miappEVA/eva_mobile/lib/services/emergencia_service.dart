@@ -4,7 +4,6 @@ import '../config/app_config.dart';
 import '../models/emergencia_model.dart';
 
 class EmergenciaService {
-  static const String _baseUrl = AppConfig.apiBaseUrl;
 
   static Future<Map<String, dynamic>> crearEmergencia({
     required String username,

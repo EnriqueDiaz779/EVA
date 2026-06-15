@@ -4,13 +4,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
 
 class AuthService {
-  static const String baseUrl = AppConfig.apiBaseUrl;
 
   static Future<Map<String, dynamic>> loginConNombre({
     required String username,
     required String password,
   }) async {
-    final url = Uri.parse('$baseUrl/api/v1/login-nombre/');
+    final url = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/login-nombre/');
 
     final response = await http.post(
       url,
@@ -40,7 +39,7 @@ class AuthService {
     required String password,
     required bool pagoCompletado,
   }) async {
-    final url = Uri.parse('$baseUrl/api/v1/register/cuidador/');
+    final url = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/register/cuidador/');
 
     final response = await http.post(
       url,
@@ -69,7 +68,7 @@ class AuthService {
     required String telefono,
     required String password,
   }) async {
-    final url = Uri.parse('$baseUrl/api/v1/register/adulto/');
+    final url = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/register/adulto/');
 
     final response = await http.post(
       url,

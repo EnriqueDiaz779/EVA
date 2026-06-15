@@ -4,7 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
 
 class VozService {
-  static const String baseUrl = AppConfig.apiBaseUrl;
 
   static Future<Map<String, dynamic>> registrarOrden({
     required String texto,
@@ -18,7 +17,7 @@ class VozService {
       username = (user['username'] ?? '').toString();
     }
 
-    final url = Uri.parse('$baseUrl/api/v1/voz/registrar-orden/');
+    final url = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/voz/registrar-orden/');
 
     final response = await http.post(
       url,

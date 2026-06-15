@@ -5,7 +5,6 @@ import '../config/app_config.dart';
 import '../models/cuidador_location_model.dart';
 
 class CuidadorLocationService {
-  static const String baseUrl = AppConfig.apiBaseUrl;
 
   static Future<String> _getUsername() async {
     final prefs = await SharedPreferences.getInstance();
@@ -24,7 +23,7 @@ class CuidadorLocationService {
 
   static Future<CuidadorLocationState> obtenerUltimaUbicacion() async {
     final username = await _getUsername();
-    final uri = Uri.parse('$baseUrl/api/v1/cuidador/ubicacion/ultima/?username=$username');
+    final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/cuidador/ubicacion/ultima/?username=$username');
     final response = await http.get(uri);
     final data = _decodeJsonResponse(
       response,
@@ -44,7 +43,7 @@ class CuidadorLocationService {
   }) async {
     final username = await _getUsername();
     final uri = Uri.parse(
-      '$baseUrl/api/v1/cuidador/ubicacion/historial/?username=$username&horas=$hours&limite=$limit',
+      '${AppConfig.apiBaseUrl}/api/v1/cuidador/ubicacion/historial/?username=$username&horas=$hours&limite=$limit',
     );
     final response = await http.get(uri);
     final data = _decodeJsonResponse(

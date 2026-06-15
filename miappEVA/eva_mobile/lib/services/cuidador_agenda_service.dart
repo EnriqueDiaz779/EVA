@@ -5,7 +5,6 @@ import '../config/app_config.dart';
 import '../models/cuidador_agenda_item.dart';
 
 class CuidadorAgendaService {
-  static const String baseUrl = AppConfig.apiBaseUrl;
 
   static Future<String> _getUsername() async {
     final prefs = await SharedPreferences.getInstance();
@@ -24,7 +23,7 @@ class CuidadorAgendaService {
 
   static Future<List<CuidadorAgendaItem>> obtenerAgenda() async {
     final username = await _getUsername();
-    final uri = Uri.parse('$baseUrl/api/v1/cuidador/alarmas/?username=$username');
+    final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/cuidador/alarmas/?username=$username');
 
     final response = await http.get(uri);
     final data = _decodeJsonResponse(
@@ -51,7 +50,7 @@ class CuidadorAgendaService {
     bool active = true,
   }) async {
     final username = await _getUsername();
-    final uri = Uri.parse('$baseUrl/api/v1/cuidador/alarmas/crear/');
+    final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/cuidador/alarmas/crear/');
     final message = type == 'cita' ? 'Cita: ${title.trim()}' : title.trim();
 
     final response = await http.post(
@@ -78,7 +77,7 @@ class CuidadorAgendaService {
 
   static Future<void> editarItem(CuidadorAgendaItem item) async {
     final username = await _getUsername();
-    final uri = Uri.parse('$baseUrl/api/v1/cuidador/alarmas/editar/');
+    final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/cuidador/alarmas/editar/');
 
     final response = await http.post(
       uri,
@@ -105,7 +104,7 @@ class CuidadorAgendaService {
 
   static Future<void> eliminarItem(int id) async {
     final username = await _getUsername();
-    final uri = Uri.parse('$baseUrl/api/v1/cuidador/alarmas/eliminar/');
+    final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/v1/cuidador/alarmas/eliminar/');
 
     final response = await http.post(
       uri,
