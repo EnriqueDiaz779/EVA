@@ -6,6 +6,10 @@ db.sqlite3
 venv/
 get-pip.py
 
+eva_mobile.zip
+eva_mobile/lib.zip
+miappeva.zip
+
 # Logs
 server.log
 *.log

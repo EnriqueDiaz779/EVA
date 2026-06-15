@@ -112,8 +112,8 @@ else:
         "default": {
             "ENGINE": "django.db.backends.mysql",
             "NAME": os.getenv("DB_NAME", "eva_db"),
-            "USER": os.getenv("DB_USER", "eva_user"),
-            "PASSWORD": os.getenv("DB_PASSWORD", ""),
+            "USER": os.getenv("DB_USER", "root"),
+            "PASSWORD": os.getenv("DB_PASSWORD", "12345"),
             "HOST": os.getenv("DB_HOST", "127.0.0.1"),
             "PORT": os.getenv("DB_PORT", "3306"),
             "OPTIONS": {
@@ -121,6 +121,7 @@ else:
             },
         }
     }
+    
 
 if DATABASES["default"]["ENGINE"] == "django.db.backends.mysql":
     options = DATABASES["default"].setdefault("OPTIONS", {})

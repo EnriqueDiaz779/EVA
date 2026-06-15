@@ -4,7 +4,7 @@ services:
     env: python
     rootDir: miappEVA
     buildCommand: bash build.sh
-    startCommand: python manage.py migrate && gunicorn miproyectoeva.wsgi:application --bind 0.0.0.0:$PORT
+    startCommand: gunicorn miproyectoeva.wsgi:application --bind 0.0.0.0:$PORT
     envVars:
       - key: DJANGO_DEBUG
         value: "false"
