@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/alarma_local.dart';
@@ -103,9 +104,10 @@ class AlarmasLocalService {
       ultimaAccionIso: null,
     );
 
+    await NotificacionService.programarAlarmaLocal(nueva);
+
     alarmas.add(nueva);
     await _guardarLista(alarmas);
-    await NotificacionService.programarAlarmaLocal(nueva);
 
     return nueva;
   }
@@ -116,10 +118,18 @@ class AlarmasLocalService {
     final alarma = filtradas.isNotEmpty ? filtradas.first : null;
     if (alarma == null) return;
 
-    await NotificacionService.cancelarAlarmaLocal(alarma);
+    try {
+      await NotificacionService.cancelarAlarmaLocal(alarma);
+    } catch (e) {
+      debugPrint('Error cancelando la alarma local $id: $e');
+    }
 
     if (alarma.source == 'remote' && alarma.remoteAlarmId != null) {
-      await AlarmasService.eliminarRemota(alarma.remoteAlarmId!);
+      try {
+        await AlarmasService.eliminarRemota(alarma.remoteAlarmId!);
+      } catch (e) {
+        debugPrint('Error eliminando alarma remota ${alarma.remoteAlarmId}: $e');
+      }
     }
 
     final nuevas = alarmas.where((e) => e.id != id).toList();
@@ -132,14 +142,22 @@ class AlarmasLocalService {
     if (index == -1) return;
 
     final alarmaActual = alarmas[index];
-    await NotificacionService.cancelarAlarmaLocal(alarmaActual);
+    try {
+      await NotificacionService.cancelarAlarmaLocal(alarmaActual);
+    } catch (e) {
+      debugPrint('Error cancelando alarma local para cambiar estado $id: $e');
+    }
 
     final nueva = alarmaActual.copyWith(activa: activa);
     alarmas[index] = nueva;
     await _guardarLista(alarmas);
 
     if (activa) {
-      await NotificacionService.programarAlarmaLocal(nueva);
+      try {
+        await NotificacionService.programarAlarmaLocal(nueva);
+      } catch (e) {
+        debugPrint('Error programando alarma activada $id: $e');
+      }
     }
   }
 
