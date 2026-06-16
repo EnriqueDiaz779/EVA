@@ -548,7 +548,7 @@ def _guardar_tratamiento_medicamentos_alarmas(usuario_id, medicamentos, django_u
                         mensaje = f"{mensaje} ({med['dosis_texto']})"
                     cursor.execute(
                         """
-                        INSERT INTO alarma (Fecha_hora, Mensaje, Estado, tipo, tratamiento_id, id_tm, Usuario_id)
+                        INSERT INTO Alarma (Fecha_hora, Mensaje, Estado, tipo, tratamiento_id, id_tm, Usuario_id)
                         VALUES (%s, %s, %s, %s, %s, %s, %s)
                         """,
                         [fecha_hora, mensaje, "pendiente", "medicamento", tratamiento_id, id_tm, usuario_id],
@@ -2439,7 +2439,7 @@ def eliminar_todas_alarmas_ajax(request):
                 cursor.execute(
                     """
                     SELECT COUNT(*)
-                    FROM alarma
+                    FROM Alarma
                     WHERE Usuario_id=%s AND Estado='pendiente'
                     """,
                     [usuario_id],
